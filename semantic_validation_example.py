@@ -56,10 +56,12 @@ def pipeline_semantic_judge():
     print("="*70)
     
     print("Loading Llama-3 (Teacher - Reference Model)...")
-    generator_llama = ConceptGenerator("meta-llama/Llama-2-7b-chat-hf")
+    # Original: generator_llama = ConceptGenerator("meta-llama/Llama-2-7b-chat-hf")
+    generator_llama = ConceptGenerator("failspy/Meta-Llama-3-8B-Instruct-abliterated-v3")
     
     print("Loading Mistral (Student - To be validated)...")
-    generator_mistral = ConceptGenerator("mistralai/Mistral-7B-Instruct-v0.3")
+    # Original: generator_mistral = ConceptGenerator("mistralai/Mistral-7B-Instruct-v0.3")
+    generator_mistral = ConceptGenerator("evolveon/Mistral-7B-Instruct-v0.3-abliterated")
     
     # Initialize the SemanticJudge with Llama as the reference
     judge = SemanticJudge(generator_llama.model, generator_llama.tokenizer)
@@ -180,10 +182,12 @@ def pipeline_sentence_alignment():
     print("="*70)
     
     print("Loading Llama-3 (Teacher)...")
-    generator_llama = ConceptGenerator("meta-llama/Llama-2-7b-chat-hf")
+    # Original: generator_llama = ConceptGenerator("meta-llama/Llama-2-7b-chat-hf")
+    generator_llama = ConceptGenerator("failspy/Meta-Llama-3-8B-Instruct-abliterated-v3")
     
     print("Loading Mistral (Student)...")
-    generator_mistral = ConceptGenerator("mistralai/Mistral-7B-Instruct-v0.3")
+    # Original: generator_mistral = ConceptGenerator("mistralai/Mistral-7B-Instruct-v0.3")
+    generator_mistral = ConceptGenerator("evolveon/Mistral-7B-Instruct-v0.3-abliterated")
     
     print("✅ Models loaded")
     

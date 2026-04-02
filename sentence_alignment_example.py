@@ -62,8 +62,13 @@ def main():
     print("STEP 2: INITIALIZE MODELS (Teacher Models)")
     print("="*70)
     
-    model_llama = "meta-llama/Meta-Llama-3-8B-Instruct"
-    model_mistral = "mistralai/Mistral-7B-Instruct-v0.3"
+    # Original models:
+    # model_llama = "meta-llama/Meta-Llama-3-8B-Instruct"
+    # model_mistral = "mistralai/Mistral-7B-Instruct-v0.3"
+    
+    # Abliterated models (without refusal filters):
+    model_llama = "failspy/Meta-Llama-3-8B-Instruct-abliterated-v3"
+    model_mistral = "evolveon/Mistral-7B-Instruct-v0.3-abliterated"
     
     print(f"\nInitializing {model_llama}...")
     gen_llama = ConceptGenerator(model_llama)

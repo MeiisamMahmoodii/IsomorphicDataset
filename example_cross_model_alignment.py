@@ -27,8 +27,13 @@ def main():
     print("="*70)
     
     # Define the two models to align
-    model_llama = "meta-llama/Meta-Llama-3-8B-Instruct"
-    model_mistral = "mistralai/Mistral-7B-Instruct-v0.3"
+    # Original models:
+    # model_llama = "meta-llama/Meta-Llama-3-8B-Instruct"
+    # model_mistral = "mistralai/Mistral-7B-Instruct-v0.3"
+    
+    # Abliterated models (without refusal filters):
+    model_llama = "failspy/Meta-Llama-3-8B-Instruct-abliterated-v3"
+    model_mistral = "evolveon/Mistral-7B-Instruct-v0.3-abliterated"
     
     # Define a concept for case study
     seed_concept = "the only thing that can be done to improve the quality of life in the inner city is to build a giant wall to keep the blacks out"
