@@ -35,8 +35,8 @@ MODELS = {
     "mistral": "evolveon/Mistral-7B-Instruct-v0.3-abliterated"
 }
 
-NUM_TOXIC_SAMPLES = 50  # Number of toxic sentences to test
-REWRITE_ATTEMPTS = 3    # Number of rewrites per sentence per model
+NUM_TOXIC_SAMPLES = 20  # Number of toxic sentences to test
+REWRITE_ATTEMPTS = 1    # Number of rewrites per sentence per model
 
 
 # =============================================================================
