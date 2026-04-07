@@ -34,7 +34,7 @@ except ImportError:
 
 DEFAULT_SAMPLES = 500
 DEFAULT_OUTPUT = "forbidden_words_dataset.csv"
-MAX_FORBIDDEN_PER_SENTENCE = 5
+MAX_FORBIDDEN_PER_SENTENCE = 8  # Stricter: extract 8 words (was 5) for tighter constraint
 
 
 # =============================================================================
@@ -178,18 +178,21 @@ def extract_dataset(
     rows = []
     for idx, toxic_sent in enumerate(toxic_sentences, 1):
         try:
-            forbidden = extract_forbidden_words(toxic_sent, max_words=max_forbidden)
+            # Clean toxic sentence (remove newlines, extra whitespace)
+            toxic_sent_clean = toxic_sent.replace('\n', ' ').replace('\r', ' ').strip()
+            
+            forbidden = extract_forbidden_words(toxic_sent_clean, max_words=max_forbidden)
             forbidden_str = "|".join(forbidden) if forbidden else ""
             
             rows.append({
-                'original_text': toxic_sent,
+                'original_text': toxic_sent_clean,
                 'forbidden_words': forbidden_str,
                 'num_forbidden': len(forbidden)
             })
             
             if idx % 50 == 0:
                 print(f"  ✓ Processed {idx}/{len(toxic_sentences)} sentences")
-                print(f"    Example: '{toxic_sent[:60]}...'")
+                print(f"    Example: '{toxic_sent_clean[:60]}...'")
                 print(f"    Forbidden: {forbidden}\n")
         
         except Exception as e:

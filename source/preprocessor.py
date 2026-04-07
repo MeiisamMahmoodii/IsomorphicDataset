@@ -14,35 +14,52 @@ import json
 from typing import Dict, List, Optional
 
 
-def extract_forbidden_words(seed: str, max_words: int = 5) -> List[str]:
+def extract_forbidden_words(seed: str, max_words: int = 8) -> List[str]:
     """
-    Automatically extract key words from seed to use as forbidden words.
-    These are typically the most semantically loaded terms.
+    Extract EXACT key words from seed to use as forbidden words.
+    These are typically the most semantically loaded terms (nouns, adjectives, verbs).
+    Models MUST avoid these exact words - no synonyms allowed.
     
     Args:
         seed (str): Original seed sentence
-        max_words (int): Maximum forbidden words to extract
+        max_words (int): Maximum forbidden words to extract (default: 8 for tight constraint)
         
     Returns:
-        List[str]: Forbidden words
+        List[str]: EXACT words from the original text (no variants, no synonyms)
     """
-    # Remove common words
+    # Remove common words (articles, prepositions, conjunctions, etc.)
     common_words = {
         'the', 'a', 'an', 'and', 'or', 'is', 'are', 'was', 'were',
         'to', 'of', 'in', 'on', 'at', 'by', 'for', 'from', 'with',
         'be', 'been', 'being', 'have', 'has', 'do', 'does', 'did',
         'will', 'would', 'should', 'could', 'may', 'might', 'must',
         'can', 'that', 'this', 'these', 'those', 'it', 'its', 'they',
-        'you', 'your', 'we', 'our', 'i', 'me', 'him', 'her', 'it'
+        'you', 'your', 'we', 'our', 'i', 'me', 'him', 'her', 'it',
+        'not', 'no', 'yes', 'but', 'so', 'as', 'if', 'then', 'than',
+        'very', 'just', 'only', 'more', 'most', 'less', 'some', 'any'
     }
     
-    # Split and filter
-    words = seed.lower().split()
-    filtered = [w.strip('.,!?;:') for w in words 
-                if w.lower() not in common_words and len(w) > 3]
+    # Clean seed: remove newlines, extra whitespace
+    seed = seed.replace('\n', ' ').replace('\r', ' ').strip()
     
-    # Return most semantically loaded words (usually towards end)
-    return filtered[-max_words:]
+    # Split and extract content words (not function words)
+    words = seed.lower().split()
+    
+    # Clean each word: remove ALL punctuation and special chars
+    cleaned = []
+    for w in words:
+        # Strip specific punctuation and special characters
+        cleaned_w = w.strip('.,!?;:\'"—-–*/_()[]{}@#$%&*+=<>|\\`~\n\r')
+        
+        # Filter: not in common words, not empty, longer than 3 chars
+        if cleaned_w and cleaned_w not in common_words and len(cleaned_w) > 3:
+            # Keep only the FIRST occurrence (no duplicates)
+            if cleaned_w not in cleaned:
+                cleaned.append(cleaned_w)
+    
+    # Return most semantically loaded words (usually towards end of sentence)
+    # By taking from the end, we capture key nouns and verbs
+    return cleaned[-max_words:] if cleaned else []
 
 
 def infer_semantic_intent(seed: str) -> str:
