@@ -14,7 +14,7 @@ import json
 from typing import Dict, List, Optional
 
 
-def extract_forbidden_words(seed: str, max_words: int = 8) -> List[str]:
+def extract_forbidden_words(seed: str, max_words: int = 5) -> List[str]:
     """
     Extract EXACT key words from seed to use as forbidden words.
     These are typically the most semantically loaded terms (nouns, adjectives, verbs).
@@ -22,7 +22,7 @@ def extract_forbidden_words(seed: str, max_words: int = 8) -> List[str]:
     
     Args:
         seed (str): Original seed sentence
-        max_words (int): Maximum forbidden words to extract (default: 8 for tight constraint)
+        max_words (int): Maximum forbidden words to extract (default: 5)
         
     Returns:
         List[str]: EXACT words from the original text (no variants, no synonyms)

@@ -34,7 +34,7 @@ except ImportError:
 
 DEFAULT_SAMPLES = 500
 DEFAULT_OUTPUT = "forbidden_words_dataset.csv"
-MAX_FORBIDDEN_PER_SENTENCE = 8  # Stricter: extract 8 words (was 5) for tighter constraint
+MAX_FORBIDDEN_PER_SENTENCE = 5
 
 
 # =============================================================================
