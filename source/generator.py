@@ -1,6 +1,10 @@
 import torch
 import string
+import warnings
 from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# Suppress harmless max_length/max_new_tokens warning
+warnings.filterwarnings("ignore", message=".*max_new_tokens.*max_length.*")
 
 # ---------------------------------------------------------
 # 1. CORE HELPER FUNCTIONS
@@ -52,9 +56,9 @@ def generate_raw_response(prompt, model, tokenizer):
         input_ids=inputs["input_ids"],
         attention_mask=inputs["attention_mask"],
         max_new_tokens=50,
-        temperature=0.8, # Slightly higher temperature helps the model "try new things" on retries
+        temperature=0.8,
         do_sample=True,
-        pad_token_id=tokenizer.eos_token_id 
+        pad_token_id=tokenizer.eos_token_id
     )
     
     prompt_length = inputs["input_ids"].shape[-1]
