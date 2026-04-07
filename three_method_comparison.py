@@ -26,7 +26,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 from datetime import datetime
 
-from source.generator import ConceptGenerator
+from source.generator import ConceptGenerator, generate_raw_response
 from source.alignment_utils import calculate_procrustes_rotation, apply_alignment_batch
 from source.semantic_judge import SemanticJudge
 import torch.nn.functional as F
@@ -277,15 +277,11 @@ def method2_generated_sentences_alignment(gen_llama: ConceptGenerator, gen_mistr
     # Generate from both models on same prompts
     for i, prompt in enumerate(GENERATION_PROMPTS, 1):
         # Generate from Llama
-        llama_response = gen_llama.generate_raw_response(
-            prompt, gen_llama.model, gen_llama.tokenizer
-        )
+        llama_response = generate_raw_response(prompt, gen_llama.model, gen_llama.tokenizer)
         llama_texts.append(llama_response)
         
         # Generate from Mistral
-        mistral_response = gen_mistral.generate_raw_response(
-            prompt, gen_mistral.model, gen_mistral.tokenizer
-        )
+        mistral_response = generate_raw_response(prompt, gen_mistral.model, gen_mistral.tokenizer)
         mistral_texts.append(mistral_response)
         
         if i % 20 == 0:
