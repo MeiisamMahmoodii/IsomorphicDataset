@@ -60,7 +60,7 @@ def load_toxigen_sentences(num_samples: int = 50) -> List[str]:
     print(f"📥 Loading ToxiGen dataset ({num_samples} samples)...\n")
     
     try:
-        dataset = load_dataset("toxigen", "train", split="train")
+        dataset = load_dataset("toxigen/toxigen-data", "train", split="train")
         
         # Extract sentences from the dataset
         toxic_sentences = []
