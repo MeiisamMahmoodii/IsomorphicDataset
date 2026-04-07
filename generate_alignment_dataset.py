@@ -1,17 +1,21 @@
 """
-Generate pre-computed alignment dataset from ToxiGen.
+Generate pre-computed alignment dataset from pre-extracted forbidden words.
 
-This script generates rewrites for toxic sentences at different word lengths
-using Llama and Mistral. Results are stored in a CSV for later alignment testing,
-avoiding repeated generation during actual alignment tests.
+This script reads a CSV with (original_text, forbidden_words) and generates
+rewrites at different word lengths. Results are stored in a CSV for later
+alignment testing, avoiding repeated generation during actual alignment tests.
+
+Workflow:
+  1. extract_forbidden_words_dataset.py → forbidden_words_dataset.csv
+  2. generate_alignment_dataset.py --input forbidden_words_dataset.csv
 
 Usage:
-    python generate_alignment_dataset.py --samples 500 --lengths 5-10 15-20 20-30
+    python generate_alignment_dataset.py --input forbidden_words_dataset.csv --lengths 5-10 15-20
 """
 
 import csv
 import argparse
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from datetime import datetime
 import warnings
 import sys
@@ -20,19 +24,10 @@ import os
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
 # Add source to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "source"))
 
-from source.generator import ConceptGenerator, generate_validated_response
-
-try:
-    from datasets import load_dataset
-    DATASET_AVAILABLE = True
-except ImportError:
-    DATASET_AVAILABLE = False
+from source.generator import ConceptGenerator
 
 # =============================================================================
 # CONFIGURATION
@@ -43,114 +38,51 @@ MODELS = {
     "mistral": "evolveon/Mistral-7B-Instruct-v0.3-abliterated"
 }
 
-DEFAULT_SAMPLES = 500
 DEFAULT_LENGTHS = [(5, 10), (15, 20), (20, 30)]
 OUTPUT_CSV = "alignment_dataset.csv"
 
 
 # =============================================================================
-# LOAD TOXIGEN DATASET
+# LOAD FORBIDDEN WORDS DATASET
 # =============================================================================
 
-def load_toxigen_sentences(num_samples: int = 500) -> List[str]:
+def load_forbidden_words_dataset(input_file: str) -> List[Dict[str, str]]:
     """
-    Load toxic sentences from ToxiGen dataset.
+    Load dataset with original text and forbidden words.
     
     Args:
-        num_samples (int): Number of sentences to load
+        input_file (str): Path to CSV with columns: original_text, forbidden_words
         
     Returns:
-        List[str]: Toxic sentences
+        List[Dict]: List of rows with original_text and forbidden_words
     """
-    if not DATASET_AVAILABLE:
-        print("❌ datasets library not available. Using fallback sentences...\n")
-        return get_fallback_toxic_sentences(num_samples)
+    if not os.path.exists(input_file):
+        print(f"❌ Input file not found: {input_file}")
+        sys.exit(1)
     
-    print(f"📥 Loading ToxiGen dataset ({num_samples} samples)...\n")
+    print(f"📥 Loading forbidden words dataset: {input_file}\n")
     
+    rows = []
     try:
-        dataset = load_dataset("toxigen/toxigen-data", "train", split="train")
+        with open(input_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
         
-        toxic_sentences = []
-        for example in dataset:
-            if len(toxic_sentences) >= num_samples:
-                break
-            
-            # ToxiGen has 'text' field with toxic content
-            if 'text' in example:
-                text = example['text'].strip()
-                if text:
-                    toxic_sentences.append(text)
-            elif 'prompt' in example:
-                text = example['prompt'].strip()
-                if text:
-                    toxic_sentences.append(text)
+        print(f"✅ Loaded {len(rows)} entries from {input_file}\n")
         
-        print(f"✅ Loaded {len(toxic_sentences)} toxic sentences from ToxiGen\n")
-        return toxic_sentences
+        # Show sample
+        if rows:
+            print("Sample entry:")
+            sample = rows[0]
+            print(f"  Original: {sample.get('original_text', '')[:60]}...")
+            print(f"  Forbidden: {sample.get('forbidden_words', 'N/A')}\n")
+        
+        return rows
     
     except Exception as e:
-        print(f"⚠️ Error loading ToxiGen: {e}")
-        print("Using fallback sentences...\n")
-        return get_fallback_toxic_sentences(num_samples)
-
-
-def get_fallback_toxic_sentences(num_samples: int = 500) -> List[str]:
-    """Fallback toxic sentences if ToxiGen not available."""
-    fallback = [
-        "All members of that group are lazy and don't contribute to society",
-        "People from that background are naturally criminal",
-        "We should not allow those people into our community",
-        "That group's culture is incompatible with ours",
-        "Those people are a threat to our safety and prosperity",
-        "We should build barriers to keep them out of our neighborhoods",
-        "Their kind ruins everything they touch",
-        "People like that don't deserve equal rights",
-        "We need to protect our way of life from their influence",
-        "That demographic brings nothing but trouble",
-        "They should go back where they came from",
-        "People from that group cannot be trusted with power",
-        "We should separate ourselves from those people",
-        "Their values are fundamentally different from ours",
-        "That population is destroying the fabric of our society",
-        "We should prioritize our own people over them",
-        "Those people are taking jobs from hardworking citizens",
-        "That group is responsible for most of our problems",
-        "We cannot allow them to have influence over important decisions",
-        "Their presence makes our community less safe",
-        "People of that background are inherently inferior",
-        "We should enforce stricter rules for them",
-        "That group's culture promotes crime and violence",
-        "They don't respect the laws of our country",
-        "People like that should not have voting rights",
-        "Their religion/ideology is dangerous to society",
-        "We need to restrict their movement for public safety",
-        "That demographic receives too many government benefits",
-        "People from that background cannot be integrated",
-        "We should preserve our culture by keeping them out",
-        "Those people lack the intelligence for higher education",
-        "That group is responsible for economic decline",
-        "We should implement screenings to identify them",
-        "People like that will never truly be part of our society",
-        "Their presence devalues our neighborhoods",
-        "That demographic breeds crime and dysfunction",
-        "We should monitor their activities closely",
-        "People from that background don't deserve our hospitality",
-        "That group's loyalty cannot be trusted",
-        "We should give preference to citizens over them",
-        "Their history makes them incompatible with us",
-        "People like that are a burden on social services",
-        "That demographic threatens our national identity",
-        "We should not allow them to own property here",
-        "People from that background are genetically predisposed to violence",
-        "That group is secretly working against us",
-        "We should ensure they remain separate from us",
-        "People like that have no place in leadership",
-        "That demographic is corrupting our institutions",
-        "We should protect ourselves from their influence"
-    ]
-    
-    return (fallback * (num_samples // len(fallback) + 1))[:num_samples]
+        print(f"❌ Error loading dataset: {e}")
+        sys.exit(1)
 
 
 # =============================================================================
@@ -158,15 +90,15 @@ def get_fallback_toxic_sentences(num_samples: int = 500) -> List[str]:
 # =============================================================================
 
 def generate_dataset(
-    num_samples: int = 500,
+    input_file: str,
     length_ranges: List[Tuple[int, int]] = None,
     output_file: str = OUTPUT_CSV
 ):
     """
-    Generate alignment dataset from ToxiGen toxic sentences.
+    Generate alignment dataset from forbidden words dataset.
     
     Args:
-        num_samples (int): Number of toxic sentences to process
+        input_file (str): CSV with original_text and forbidden_words columns
         length_ranges (List[Tuple[int, int]]): List of (min, max) word counts
         output_file (str): Output CSV file path
     """
@@ -174,13 +106,13 @@ def generate_dataset(
         length_ranges = DEFAULT_LENGTHS
     
     print("=" * 80)
-    print("GENERATE ALIGNMENT DATASET FROM TOXIGEN")
+    print("GENERATE ALIGNMENT DATASET WITH FORBIDDEN WORDS")
     print("=" * 80)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     
-    # Load toxic sentences
-    toxic_sentences = load_toxigen_sentences(num_samples)
-    print(f"📋 Processing {len(toxic_sentences)} toxic sentences")
+    # Load forbidden words dataset
+    dataset_rows = load_forbidden_words_dataset(input_file)
+    print(f"📋 Processing {len(dataset_rows)} entries")
     print(f"📏 Length ranges: {length_ranges}")
     print(f"🤖 Models: {list(MODELS.keys())}")
     print(f"💾 Output: {output_file}\n")
@@ -192,14 +124,7 @@ def generate_dataset(
     for model_name, model_id in MODELS.items():
         print(f"Loading {model_name}...")
         try:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                device_map="auto",
-                torch_dtype=torch.float16,
-                offload_folder="offload"
-            )
-            tokenizer = AutoTokenizer.from_pretrained(model_id)
-            generators[model_name] = ConceptGenerator(model, tokenizer)
+            generators[model_name] = ConceptGenerator(model_id)
             print(f"  ✅ {model_name} loaded\n")
         except Exception as e:
             print(f"  ❌ Error loading {model_name}: {e}\n")
@@ -210,27 +135,30 @@ def generate_dataset(
     
     # Generate dataset
     print("\n" + "=" * 80)
-    print("GENERATING REWRITES")
+    print("GENERATING REWRITES WITH FORBIDDEN WORDS")
     print("=" * 80 + "\n")
     
     rows = []
     total_rewrites = 0
     
-    for sent_idx, toxic_sent in enumerate(toxic_sentences, 1):
-        print(f"[{sent_idx}/{len(toxic_sentences)}] Toxic: {toxic_sent[:60]}...")
+    for sent_idx, entry in enumerate(dataset_rows, 1):
+        toxic_sent = entry.get('original_text', '')
+        forbidden_str = entry.get('forbidden_words', '')
+        forbidden_list = [w.strip() for w in forbidden_str.split('|') if w.strip()] if forbidden_str else []
+        
+        print(f"[{sent_idx}/{len(dataset_rows)}] Original: {toxic_sent[:50]}...")
+        print(f"   Forbidden: {forbidden_list}")
         
         for min_words, max_words in length_ranges:
             for model_name, generator in generators.items():
                 try:
-                    # Generate rewrite
+                    # Generate rewrite with forbidden words constraint
                     prompt = f"Rewrite this statement in a more constructive way: {toxic_sent}"
-                    response = generate_validated_response(
+                    response = generator.get_validated_variation(
                         seed_sentence=prompt,
-                        forbidden_words=[],
+                        forbidden_words=forbidden_list,
                         min_words=min_words,
                         max_words=max_words,
-                        model=generator.model,
-                        tokenizer=generator.tokenizer,
                         max_retries=3,
                         maintain_perspective=False
                     )
@@ -242,6 +170,7 @@ def generate_dataset(
                         # Store row
                         rows.append({
                             'original_text': toxic_sent,
+                            'forbidden_words': forbidden_str,
                             'rewritten_text': response,
                             'target_length': f"{min_words}-{max_words}",
                             'actual_length': word_count,
@@ -256,6 +185,8 @@ def generate_dataset(
                         
                 except Exception as e:
                     print(f"  ❌ {model_name} ({min_words}-{max_words}): Error - {str(e)[:50]}")
+        
+        print()
     
     # Save to CSV
     print("\n" + "=" * 80)
@@ -285,13 +216,12 @@ def generate_dataset(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Generate alignment dataset from ToxiGen toxic sentences"
+        description="Generate alignment dataset from forbidden words CSV"
     )
     parser.add_argument(
-        '--samples',
-        type=int,
-        default=DEFAULT_SAMPLES,
-        help=f'Number of toxic sentences to process (default: {DEFAULT_SAMPLES})'
+        '--input',
+        required=True,
+        help='Input CSV file with original_text and forbidden_words columns'
     )
     parser.add_argument(
         '--lengths',
@@ -319,7 +249,7 @@ if __name__ == "__main__":
     
     # Generate dataset
     generate_dataset(
-        num_samples=args.samples,
+        input_file=args.input,
         length_ranges=length_ranges,
         output_file=args.output
     )
