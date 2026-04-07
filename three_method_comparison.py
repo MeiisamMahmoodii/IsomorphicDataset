@@ -40,11 +40,47 @@ MODELS = {
     "mistral": "evolveon/Mistral-7B-Instruct-v0.3-abliterated"
 }
 
-# Pre-made anchor words (12) for Method 1
+# Pre-made anchor words (100) for Method 1
 ANCHOR_WORDS = [
-    "technology", "innovation", "sustainability", "education",
-    "healthcare", "economy", "climate", "society",
-    "culture", "governance", "infrastructure", "development"
+    # Science & Technology (10)
+    "technology", "innovation", "algorithm", "artificial intelligence", "quantum",
+    "computation", "data", "network", "software", "hardware",
+    
+    # Health & Medicine (10)
+    "healthcare", "medicine", "disease", "vaccine", "treatment",
+    "prevention", "wellness", "immunity", "diagnosis", "therapy",
+    
+    # Environment & Sustainability (10)
+    "sustainability", "climate", "renewable", "carbon", "ecosystem",
+    "conservation", "biodiversity", "pollution", "energy", "nature",
+    
+    # Education (10)
+    "education", "learning", "student", "teacher", "knowledge",
+    "skill", "curriculum", "development", "literacy", "training",
+    
+    # Economics & Business (10)
+    "economy", "business", "investment", "trade", "market",
+    "profit", "employment", "entrepreneurship", "finance", "commerce",
+    
+    # Society & Culture (10)
+    "society", "culture", "tradition", "community", "relationship",
+    "social", "family", "identity", "heritage", "diversity",
+    
+    # Governance & Ethics (10)
+    "governance", "law", "ethics", "justice", "rights",
+    "democracy", "institution", "policy", "regulation", "authority",
+    
+    # Arts & Creativity (10)
+    "art", "music", "creativity", "design", "expression",
+    "literature", "performance", "imagination", "aesthetic", "beauty",
+    
+    # Infrastructure & Development (10)
+    "infrastructure", "development", "construction", "transportation", "urban",
+    "architecture", "engineering", "planning", "facility", "system",
+    
+    # Psychology & Behavior (10)
+    "psychology", "behavior", "emotion", "cognition", "personality",
+    "motivation", "resilience", "perception", "learning", "consciousness"
 ]
 
 # Diverse prompts for Method 2 (100 prompts)
@@ -178,10 +214,10 @@ GENERATION_PROMPTS = [
 def method1_keyword_alignment(gen_llama: ConceptGenerator, gen_mistral: ConceptGenerator) -> Dict:
     """
     Method 1: Extract vectors for pre-defined anchor words.
-    Baseline approach - fast but limited.
+    Now using 100 diverse keywords across 10 semantic domains.
     """
     print("\n" + "="*80)
-    print("METHOD 1: KEYWORD-LEVEL ALIGNMENT (12 Anchor Words)")
+    print("METHOD 1: KEYWORD-LEVEL ALIGNMENT (100 Anchor Words)")
     print("="*80)
     
     print("\n📋 Extracting keyword vectors...")
@@ -200,12 +236,12 @@ def method1_keyword_alignment(gen_llama: ConceptGenerator, gen_mistral: ConceptG
         mistral_vec = gen_mistral.get_latent_vector(word)
         mistral_keyword_vectors.append(mistral_vec)
         
-        if i % 4 == 0:
+        if i % 25 == 0:
             print(f"  ✓ Processed {i}/{len(ANCHOR_WORDS)} keywords")
     
     # Stack into manifolds
-    llama_manifold = torch.stack(llama_keyword_vectors)  # [12, 8192]
-    mistral_manifold = torch.stack(mistral_keyword_vectors)  # [12, 8192]
+    llama_manifold = torch.stack(llama_keyword_vectors)  # [100, 8192]
+    mistral_manifold = torch.stack(mistral_keyword_vectors)  # [100, 8192]
     
     print(f"\n✅ Manifold shapes:")
     print(f"   Llama:   {llama_manifold.shape}")
@@ -226,10 +262,18 @@ def method1_keyword_alignment(gen_llama: ConceptGenerator, gen_mistral: ConceptG
     alignment_quality = cosine_sims.mean().item()
     
     print(f"\n✅ Alignment Quality (mean cosine): {alignment_quality:.4f}")
-    print(f"   Per-keyword cosine similarities:")
-    for i, (word, sim) in enumerate(zip(ANCHOR_WORDS, cosine_sims), 1):
-        status = "✅" if sim > 0.8 else "⚠️" if sim > 0.6 else "❌"
-        print(f"     {i:2d}. {word:15s} → {sim:.4f} {status}")
+    print(f"   Top 10 Best Aligned Keywords:")
+    sorted_indices = torch.argsort(cosine_sims, descending=True)
+    for rank, idx in enumerate(sorted_indices[:10], 1):
+        word = ANCHOR_WORDS[idx]
+        sim = cosine_sims[idx].item()
+        print(f"     {rank:2d}. {word:20s} → {sim:.4f} ✅")
+    
+    print(f"\n   Top 10 Worst Aligned Keywords:")
+    for rank, idx in enumerate(sorted_indices[-10:], 1):
+        word = ANCHOR_WORDS[idx]
+        sim = cosine_sims[idx].item()
+        print(f"     {rank:2d}. {word:20s} → {sim:.4f} ⚠️")
     
     results = {
         "method": "keyword_level",
