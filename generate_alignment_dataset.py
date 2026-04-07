@@ -26,8 +26,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # Add source to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "source"))
 
-from generator import ConceptGenerator
-from dependencies import generate_validated_response
+from source.generator import ConceptGenerator, generate_validated_response
 
 try:
     from datasets import load_dataset
