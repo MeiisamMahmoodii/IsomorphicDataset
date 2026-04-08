@@ -49,7 +49,7 @@ def extract_forbidden_words(seed: str, max_words: int = 5) -> List[str]:
     cleaned = []
     for w in words:
         # Strip specific punctuation and special characters
-        cleaned_w = w.strip('.,!?;:\'"—-–*/_()[]{}@#$%&*+=<>|\\`~\n\r')
+        cleaned_w = w.strip('.,!?;:\'"—-–*/_()[]{}@#$%&*+=<>|\\`~\n\r').strip()
         
         # Filter: not in common words, not empty, longer than 3 chars
         if cleaned_w and cleaned_w not in common_words and len(cleaned_w) > 3:
@@ -59,7 +59,9 @@ def extract_forbidden_words(seed: str, max_words: int = 5) -> List[str]:
     
     # Return most semantically loaded words (usually towards end of sentence)
     # By taking from the end, we capture key nouns and verbs
-    return cleaned[-max_words:] if cleaned else []
+    result = cleaned[-max_words:] if cleaned else []
+    # Final strip on each word to ensure no whitespace
+    return [w.strip() for w in result]
 
 
 def infer_semantic_intent(seed: str) -> str:

@@ -182,7 +182,8 @@ def extract_dataset(
             toxic_sent_clean = toxic_sent.replace('\n', ' ').replace('\r', ' ').strip()
             
             forbidden = extract_forbidden_words(toxic_sent_clean, max_words=max_forbidden)
-            forbidden_str = "|".join(forbidden) if forbidden else ""
+            # Ensure each word is stripped, then join with pipe separator
+            forbidden_str = "|".join([w.strip() for w in forbidden]) if forbidden else ""
             
             rows.append({
                 'original_text': toxic_sent_clean,
