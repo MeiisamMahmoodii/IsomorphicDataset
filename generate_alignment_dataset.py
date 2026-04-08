@@ -20,9 +20,12 @@ from datetime import datetime
 import warnings
 import sys
 import os
+import gc
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
+
+import torch
 
 # Add source to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "source"))
@@ -114,45 +117,42 @@ def generate_dataset(
     dataset_rows = load_forbidden_words_dataset(input_file)
     print(f"📋 Processing {len(dataset_rows)} entries")
     print(f"📏 Length ranges: {length_ranges}")
-    print(f"🤖 Models: {list(MODELS.keys())}")
+    print(f"🤖 Models: {list(MODELS.keys())} (sequential loading - one at a time)")
     print(f"💾 Output: {output_file}\n")
     
-    # Initialize models
-    print("Initializing models...")
-    print("-" * 80)
-    generators = {}
-    for model_name, model_id in MODELS.items():
-        print(f"Loading {model_name}...")
-        try:
-            generators[model_name] = ConceptGenerator(model_id)
-            print(f"  ✅ {model_name} loaded\n")
-        except Exception as e:
-            print(f"  ❌ Error loading {model_name}: {e}\n")
-    
-    if not generators:
-        print("❌ No models loaded. Exiting.")
-        return
-    
-    # Generate dataset
+    # Generate dataset with sequential model loading
     print("\n" + "=" * 80)
-    print("GENERATING REWRITES WITH FORBIDDEN WORDS")
+    print("GENERATING REWRITES WITH FORBIDDEN WORDS (Sequential Model Loading)")
     print("=" * 80 + "\n")
     
     rows = []
     total_rewrites = 0
     
-    for sent_idx, entry in enumerate(dataset_rows, 1):
-        toxic_sent = entry.get('original_text', '')
-        forbidden_str = entry.get('forbidden_words', '')
-        forbidden_list = [w.strip() for w in forbidden_str.split('|') if w.strip()] if forbidden_str else []
+    # Load and process one model at a time (memory efficient)
+    for model_name, model_id in MODELS.items():
+        print(f"\n{'='*80}")
+        print(f"LOADING MODEL: {model_name}")
+        print(f"{'='*80}\n")
         
-        print(f"[{sent_idx}/{len(dataset_rows)}] Original: {toxic_sent[:50]}...")
-        print(f"   Forbidden: {forbidden_list}")
+        try:
+            generator = ConceptGenerator(model_id)
+            print(f"  ✅ {model_name} loaded (in GPU memory)\n")
+        except Exception as e:
+            print(f"  ❌ Error loading {model_name}: {e}\n")
+            continue
         
-        for min_words, max_words in length_ranges:
-            for model_name, generator in generators.items():
+        # Generate for ALL sentences with this model
+        for sent_idx, entry in enumerate(dataset_rows, 1):
+            toxic_sent = entry.get('original_text', '').replace('\n', ' ').replace('\r', ' ').strip()
+            forbidden_str = entry.get('forbidden_words', '')
+            forbidden_list = [w.strip() for w in forbidden_str.split('|') if w.strip()] if forbidden_str else []
+            
+            print(f"[{sent_idx}/{len(dataset_rows)}] Toxic: {toxic_sent[:50]}...")
+            print(f"   Model: {model_name} | Forbidden: {forbidden_list}")
+            
+            for min_words, max_words in length_ranges:
                 try:
-                    # Generate rewrite with forbidden words constraint
+                    # Generate rewrite with this model
                     prompt = f"Rewrite this statement in a more constructive way: {toxic_sent}"
                     response = generator.get_validated_variation(
                         seed_sentence=prompt,
@@ -186,7 +186,15 @@ def generate_dataset(
                 except Exception as e:
                     print(f"  ❌ {model_name} ({min_words}-{max_words}): Error - {str(e)[:50]}")
         
-        print()
+        # Unload model from GPU
+        print(f"\n{'='*80}")
+        print(f"UNLOADING MODEL: {model_name} (freeing GPU memory)")
+        print(f"{'='*80}\n")
+        del generator
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        print(f"  ✅ {model_name} unloaded\n")
     
     # Save to CSV
     print("\n" + "=" * 80)
