@@ -1,0 +1,19 @@
+name: isomorphic
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytorch::pytorch::=2.11.0
+  - pytorch::torchvision::=0.16.0
+  - pytorch::torchaudio::=2.11.0
+  - pytorch::pytorch-cuda=12.2
+  - pip
+  - pip:
+    - transformers>=5.4.0
+    - accelerate>=1.13.0
+    - datasets>=4.8.4
+    - numpy>=1.24.0
+    - scipy>=1.10.0
+    - pot>=0.9.3
