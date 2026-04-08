@@ -91,28 +91,43 @@ def generate_validated_response(seed_sentence, forbidden_words, min_words, max_w
     # Dynamically build the prompt based on the parameters
     if maintain_perspective:
         # Perspective injection: Force models to maintain consistency
-        prompt = f"""Rewrite the following idea into a single sentence between {min_words} and {max_words} words long.
+        prompt = f"""WORD COUNT REQUIREMENT: {min_words}-{max_words} words ONLY. THIS IS NON-NEGOTIABLE.
 
-CRITICAL CONSTRAINT: You MUST maintain the original perspective and supportive stance of the seed sentence.
-Do not offer alternatives, community-based solutions, or counterarguments. Preserve the core viewpoint.
+Rewrite the following idea into a SINGLE sentence with EXACTLY {min_words}-{max_words} words.
 
-STRICT RULES:
-1. Output ONLY the rewritten sentence. No introductions, no explanations, no formatting, and no opinions.
-2. The sentence MUST be between {min_words} and {max_words} words.
-3. You are STRICTLY FORBIDDEN from using any of these words: {', '.join(forbidden_words)}.
-4. Maintain the perspective of the original sentence at all times.
+CRITICAL CONSTRAINTS (FAILURE ON ANY VIOLATION):
+1. Output ONLY ONE sentence. Nothing else. No explanations, no preamble.
+2. Word count MUST be between {min_words} and {max_words}. Count every single word.
+3. FORBIDDEN WORDS (never use these): {', '.join(forbidden_words)}
+4. Maintain the original perspective and supportive stance.
+5. If instructions are violated, the output is invalid and rejected.
 
-Core idea: {seed_sentence}"""
+EXAMPLE FORMAT:
+For a 5-10 word requirement: "Your output should look like this." (6 words)
+For a 15-20 word requirement: "Your output should look like this with more detail included here." (12 words is WRONG - too few)
+
+CORE IDEA TO REWRITE: {seed_sentence}
+
+RESPOND WITH ONLY THE REWRITTEN SENTENCE ({min_words}-{max_words} words). No other text."""
     else:
         # Standard prompt without perspective enforcement
-        prompt = f"""Rewrite the following core idea into a single sentence between {min_words} and {max_words} words long. 
+        prompt = f"""WORD COUNT REQUIREMENT: {min_words}-{max_words} words ONLY. THIS IS NON-NEGOTIABLE.
 
-STRICT RULES:
-1. Output ONLY the rewritten sentence. No introductions, no explanations, no formatting, and no opinions.
-2. The sentence MUST be between {min_words} and {max_words} words.
-3. You are STRICTLY FORBIDDEN from using any of these words: {', '.join(forbidden_words)}.
+Rewrite the following core idea into a SINGLE sentence with EXACTLY {min_words}-{max_words} words.
 
-Core idea: {seed_sentence}"""
+CRITICAL RULES (FAILURE ON ANY VIOLATION):
+1. Output ONLY ONE sentence. Nothing else. No explanations, preamble, or commentary.
+2. Word count MUST be between {min_words} and {max_words}. Count every word.
+3. FORBIDDEN WORDS (never use these): {', '.join(forbidden_words)}
+4. If any rule is broken, output is invalid and will be rejected.
+
+EXAMPLE FORMAT:
+For 5-10 words: "Your sentence goes here." (4 words is WRONG - too few)
+For 15-20 words: "Your sentence goes here with more content to meet the word count requirement." (13 words is WRONG)
+
+CORE IDEA: {seed_sentence}
+
+RESPOND WITH ONLY THE REWRITTEN SENTENCE ({min_words}-{max_words} words). NOTHING ELSE."""
 
     print(f"\nTarget: {min_words}-{max_words} words. Max retries: {max_retries}")
     
