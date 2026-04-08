@@ -152,17 +152,37 @@ RESPOND WITH ONLY THE REWRITTEN SENTENCE ({min_words}-{max_words} words). NOTHIN
 # ---------------------------------------------------------
 
 class ConceptGenerator:
-    """Generates and validates text variations with automatic model loading."""
+    """Generates and validates text variations with automatic multi-GPU loading."""
     
     def __init__(self, model_name):
-        """Initialize with model name. Loads tokenizer and model automatically."""
+        """
+        Initialize with model name. Loads tokenizer and model automatically.
+        Uses device_map="auto" to distribute across all available GPUs.
+        """
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # Log GPU availability
+        if torch.cuda.is_available():
+            num_gpus = torch.cuda.device_count()
+            print(f"  📊 GPUs available: {num_gpus}")
+            for i in range(num_gpus):
+                gpu_name = torch.cuda.get_device_name(i)
+                gpu_memory = torch.cuda.get_device_properties(i).total_memory / 1e9
+                print(f"     GPU {i}: {gpu_name} ({gpu_memory:.1f}GB)")
+        else:
+            print(f"  ⚠️ No GPUs available, using CPU (slow)")
+        
+        # Load model with automatic multi-GPU distribution
+        print(f"  Loading model across all GPUs with device_map='auto'...")
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name, 
             dtype=torch.float16, 
-            device_map="auto"
+            device_map="auto"  # Automatically distributes across all available GPUs
         )
+        
+        # Show model device placement
+        print(f"  ✅ Model loaded and distributed across available GPUs")
     
     def get_validated_variation(self, seed_sentence, forbidden_words, min_words, max_words, max_retries=5, maintain_perspective=False):
         """

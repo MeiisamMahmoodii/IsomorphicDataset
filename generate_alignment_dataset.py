@@ -46,6 +46,36 @@ OUTPUT_CSV = "alignment_dataset.csv"
 
 
 # =============================================================================
+# GPU UTILITIES
+# =============================================================================
+
+def show_gpu_info():
+    """Display available GPU information."""
+    print("\n" + "="*80)
+    print("GPU INFORMATION")
+    print("="*80)
+    
+    if torch.cuda.is_available():
+        num_gpus = torch.cuda.device_count()
+        print(f"✅ CUDA Available: {num_gpus} GPU(s) detected\n")
+        
+        total_memory = 0
+        for i in range(num_gpus):
+            gpu_name = torch.cuda.get_device_name(i)
+            gpu_memory = torch.cuda.get_device_properties(i).total_memory / 1e9
+            total_memory += gpu_memory
+            print(f"   GPU {i}: {gpu_name}")
+            print(f"           Memory: {gpu_memory:.1f}GB")
+        
+        print(f"\n   Total GPU Memory: {total_memory:.1f}GB")
+        print(f"\n📌 Models will automatically distribute across {num_gpus} GPU(s)")
+    else:
+        print("❌ No GPUs detected - using CPU (very slow)")
+    
+    print("="*80 + "\n")
+
+
+# =============================================================================
 # LOAD FORBIDDEN WORDS DATASET
 # =============================================================================
 
@@ -112,6 +142,9 @@ def generate_dataset(
     print("GENERATE ALIGNMENT DATASET WITH FORBIDDEN WORDS")
     print("=" * 80)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    
+    # Show GPU information
+    show_gpu_info()
     
     # Load forbidden words dataset
     dataset_rows = load_forbidden_words_dataset(input_file)
