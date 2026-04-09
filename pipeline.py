@@ -169,18 +169,23 @@ def align_models(
     # Align latent spaces using Procrustes
     print(f"\n--- Computing Procrustes Alignment ---")
     model_names_list = list(model_names)
-    alignment_results = align_latent_spaces(
+    Q, alignment_quality, source_mean, target_mean = align_latent_spaces(
         anchor_vectors[model_names_list[0]],
         anchor_vectors[model_names_list[1]],
     )
     
-    print(f"✓ Rotation matrix computed: {alignment_results['rotation_matrix'].shape}")
-    print(f"✓ Alignment error: {alignment_results['alignment_error']:.6f}")
+    print(f"✓ Rotation matrix computed: {Q.shape}")
+    print(f"✓ Alignment quality: {alignment_quality:.4f}")
     
     return {
         "generators": generators,
         "anchor_vectors": anchor_vectors,
-        "alignment": alignment_results,
+        "alignment": {
+            "rotation_matrix": Q,
+            "alignment_quality": alignment_quality,
+            "source_mean": source_mean,
+            "target_mean": target_mean,
+        },
     }
 
 
@@ -220,7 +225,7 @@ def compute_metrics(
                 alignment_data['alignment']['rotation_matrix'].T,
                 torch.eye(alignment_data['alignment']['rotation_matrix'].shape[0])
             ),
-            "alignment_error": alignment_data['alignment']['alignment_error'],
+            "alignment_quality": alignment_data['alignment']['alignment_quality'],
             "num_anchors": len(alignment_data['anchor_vectors'][model_names[0]]),
         }
     }
@@ -232,7 +237,7 @@ def compute_metrics(
     
     print(f"✓ Alignment Statistics:")
     print(f"  - Rotation matrix orthogonal: {metrics['alignment_stats']['rotation_matrix_ortho']}")
-    print(f"  - Alignment error: {metrics['alignment_stats']['alignment_error']:.6f}")
+    print(f"  - Alignment quality: {metrics['alignment_stats']['alignment_quality']:.6f}")
     print(f"  - Anchor words: {metrics['alignment_stats']['num_anchors']}")
     
     return metrics
