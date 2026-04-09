@@ -223,7 +223,8 @@ def compute_metrics(
             "rotation_matrix_ortho": torch.allclose(
                 alignment_data['alignment']['rotation_matrix'] @ 
                 alignment_data['alignment']['rotation_matrix'].T,
-                torch.eye(alignment_data['alignment']['rotation_matrix'].shape[0])
+                torch.eye(alignment_data['alignment']['rotation_matrix'].shape[0], 
+                         device=alignment_data['alignment']['rotation_matrix'].device)
             ),
             "alignment_quality": alignment_data['alignment']['alignment_quality'],
             "num_anchors": len(alignment_data['anchor_vectors'][model_names[0]]),
