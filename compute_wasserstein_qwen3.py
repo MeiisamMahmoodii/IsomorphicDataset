@@ -48,13 +48,18 @@ for i in tqdm(range(0, len(df), BATCH_SIZE)):
 orig_embeds = np.vstack(orig_embeds)
 rewrite_embeds = np.vstack(rewrite_embeds)
 
+# --- NORMALIZE EMBEDDINGS ---
+print("Normalizing embeddings...")
+orig_embeds = orig_embeds / np.linalg.norm(orig_embeds, axis=1, keepdims=True)
+rewrite_embeds = rewrite_embeds / np.linalg.norm(rewrite_embeds, axis=1, keepdims=True)
+
 # --- CALCULATE WASSERSTEIN (L2) DISTANCE ---
 print("Calculating Wasserstein (L2) distances...")
 w_dist = np.linalg.norm(orig_embeds - rewrite_embeds, axis=1)
 df['w_distance'] = w_dist
 
 # --- FILTER BY THRESHOLD ---
-THRESHOLD = 0.050
+THRESHOLD = 0.5
 keep_mask = df['w_distance'] < THRESHOLD
 kept = df[keep_mask]
 print(f"Kept {kept.shape[0]} / {df.shape[0]} pairs (W < {THRESHOLD})")
