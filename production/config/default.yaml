@@ -1,0 +1,56 @@
+# IsomorphicDataSet - Default Configuration
+# Complete end-to-end pipeline for latent space isomorphism analysis
+
+experiment:
+  name: "isomorphic_baseline_production"
+  description: "Full-scale production pipeline with Llama and Mistral on ToxiGen dataset"
+  
+  # Model Configuration
+  models:
+    - name: "Llama-3-8B-Instruct"
+      model_id: "failspy/Meta-Llama-3-8B-Instruct-abliterated-v3"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 16
+    
+    - name: "Mistral-7B-Instruct"
+      model_id: "evolveon/Mistral-7B-Instruct-v0.3-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 16
+  
+  # Dataset Configuration
+  datasets:
+    - name: "toxigen_production"
+      dataset_type: "toxigen"
+      source: "huggingface"
+      max_samples: 1000
+      use_banned_word_extraction: true
+  
+  # Vector Extraction Configuration
+  extraction:
+    method: "mean_pooling"  # Options: mean_pooling, last_token, hybrid, attention_weighted
+    normalize: true
+    batch_size: 32
+  
+  # Procrustes Alignment Configuration
+  alignment:
+    method: "procrustes_svd"
+    num_anchors: 77
+    anchor_type: "words"
+    normalize_embeddings: true
+    wasserstein_threshold: 0.5
+  
+  # Output Configuration
+  output_dir: "experiments/results"
+  save_embeddings: true
+  save_rotation_matrix: true
+  compute_statistics: true
+
+# Global Configuration
+logging_level: "INFO"
+seed: 42
+device: "cuda"
+mixed_precision: true
