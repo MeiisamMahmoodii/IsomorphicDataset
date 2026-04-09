@@ -1,0 +1,255 @@
+# Model Configuration for IsomorphicDataSet
+# Specifies embedding models (vector extraction) and rewriting models (variation generation)
+
+---
+
+# ===== EMBEDDING MODELS =====
+# These models are used ONLY for vector extraction (no text generation)
+# Fixed/controlled across all experiments
+embedding:
+  primary:
+    name: "Qwen2.5-7B-Instruct"
+    model_id: "huihui-ai/Qwen2.5-7B-Instruct-abliterated-v2"
+    purpose: "embedding"
+    description: "Primary embedding model for all vector extraction"
+    device: "cuda"
+    dtype: "bfloat16"
+    max_length: 2048
+    batch_size: 8
+    load_in_8bit: false
+    embedding_dim: 3584  # Qwen2.5-7B output dimension
+    extraction_methods:
+      - "mean_pooling"
+      - "last_token"
+      - "hybrid"
+      - "attention_weighted"
+
+---
+
+# ===== REWRITING MODELS =====
+# These models are used for semantic variation generation
+# Different models for testing generalization
+
+rewriting:
+  
+  # Primary models (used in most experiments)
+  llama_8b:
+    name: "Llama-3.1-8B-Instruct"
+    model_id: "mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated"
+    purpose: "rewriting"
+    description: "General-purpose rewriting model (base comparison)"
+    device: "cuda"
+    dtype: "bfloat16"
+    max_length: 2048
+    batch_size: 4
+    load_in_8bit: false
+    vram_required_gb: 16
+    inference_speed_relative: 1.0
+
+  qwen_7b:
+    name: "Qwen2.5-7B-Instruct"
+    model_id: "huihui-ai/Qwen2.5-7B-Instruct-abliterated-v2"
+    purpose: "rewriting"
+    description: "Rewriting model (same size as embedding - consistency check)"
+    device: "cuda"
+    dtype: "bfloat16"
+    max_length: 2048
+    batch_size: 4
+    load_in_8bit: false
+    vram_required_gb: 16
+    inference_speed_relative: 1.0
+
+  # Advanced models (for Exp 4, 7, 8)
+  qwen_32b:
+    name: "Qwen3-32B-Instruct"
+    model_id: "huihui-ai/Qwen3-32B-abliterated"
+    purpose: "rewriting"
+    description: "Advanced reasoning model (larger, more capable)"
+    device: "cuda"
+    dtype: "bfloat16"
+    max_length: 2048
+    batch_size: 2
+    load_in_8bit: false
+    vram_required_gb: 24
+    inference_speed_relative: 0.5  # Slower than 8B
+
+  mistral_12b:
+    name: "Mistral-Nemo-12B-Instruct"
+    model_id: "grimjim/mistralai-Mistral-Nemo-Instruct-2407-extensive-BP-abliteration-12B"
+    purpose: "rewriting"
+    description: "Cross-family comparison (Mistral architecture)"
+    device: "cuda"
+    dtype: "bfloat16"
+    max_length: 2048
+    batch_size: 4
+    load_in_8bit: false
+    vram_required_gb: 20
+    inference_speed_relative: 0.8
+
+  # 70B Model for Banned Word Extraction (High Quality, Strict Constraints)
+  qwen_72b:
+    name: "Qwen2.5-72B-Instruct"
+    model_id: "failspy/Qwen2.5-72B-Instruct-abliterated"
+    purpose: "banned_word_extraction"
+    description: "SOTA model for extracting semantic forbidden words (quality over speed)"
+    device: "cuda"
+    dtype: "bfloat16"
+    max_length: 2048
+    batch_size: 1
+    load_in_8bit: true
+    vram_required_gb: 40
+    inference_speed_relative: 0.2
+    use_case: "Extract 5-7 most semantically loaded words from seed (high accuracy required)"
+
+  # Optional: Lightweight and heavy variants
+  llama_3b_optional:
+    name: "Llama-3.2-3B-Instruct"
+    model_id: "huihui-ai/Llama-3.2-3B-Instruct-abliterated"
+    purpose: "rewriting"
+    description: "Lightweight edge model (optional, for scalability experiments)"
+    device: "cuda"
+    dtype: "float32"
+    max_length: 2048
+    batch_size: 8
+    load_in_8bit: false
+    vram_required_gb: 8
+    inference_speed_relative: 2.0
+
+  mistral_24b_optional:
+    name: "Mistral-Small-24B-Instruct"
+    model_id: "MaziyarPanahi/Mistral-Small-Instruct-2409-abliterated"
+    purpose: "rewriting"
+    description: "Mid-range model (optional, for extended comparisons)"
+    device: "cuda"
+    dtype: "bfloat16"
+    max_length: 2048
+    batch_size: 2
+    load_in_8bit: true
+    vram_required_gb: 24
+    inference_speed_relative: 0.4
+
+---
+
+# ===== EXPERIMENT MODEL ASSIGNMENTS =====
+# Which models to use for each experiment
+
+experiments:
+
+  exp_001_anchor_strategy:
+    embedding_model: "embedding.primary"
+    rewriting_models: ["llama_8b", "qwen_7b"]
+    description: "Baseline anchor comparison"
+
+  exp_002_extraction_methods:
+    embedding_model: "embedding.primary"  # Use all 4 extraction methods on same model
+    rewriting_models: ["llama_8b", "qwen_7b", "qwen_32b"]
+    description: "Compare extraction techniques across models"
+
+  exp_003_cross_dataset:
+    embedding_model: "embedding.primary"
+    rewriting_models: ["llama_8b", "qwen_7b"]
+    description: "Generalization across domains"
+
+  exp_004_model_pairs:
+    embedding_model: "embedding.primary"
+    model_pairs:
+      - [llama_8b, qwen_7b]          # Base pair (8B ↔ 7B)
+      - [llama_8b, qwen_32b]          # Size mismatch (8B ↔ 32B)
+      - [qwen_7b, mistral_12b]        # Cross-family (7B ↔ 12B)
+    description: "Model pair alignment quality"
+
+  exp_005_alignment_stability:
+    embedding_model: "embedding.primary"
+    rewriting_models: ["llama_8b", "qwen_7b"]
+    perturbation_levels: [0.05, 0.1, 0.15, 0.2]
+    description: "Robustness to embedding noise"
+
+  exp_006_scalability:
+    embedding_model: "embedding.primary"
+    rewriting_models: ["llama_8b"]  # Single model to isolate scaling
+    sample_sizes: [100, 500, 1000, 5000, 10000]
+    description: "Computational complexity analysis"
+
+  exp_007_semantic_preservation:
+    embedding_model: "embedding.primary"
+    rewriting_models: ["llama_8b", "qwen_7b", "qwen_32b"]
+    variation_lengths: ["short_5-10", "medium_15-20", "long_20-30"]
+    description: "Quality of semantic variations"
+
+  exp_008_statistical_significance:
+    embedding_model: "embedding.primary"
+    rewriting_models: ["llama_8b", "qwen_7b", "qwen_32b", "mistral_12b"]
+    description: "Statistical rigor across all experiments"
+
+---
+
+# ===== HARDWARE REQUIREMENTS =====
+# Total VRAM needed for different experiment phases
+
+hardware:
+  minimum:
+    vram_gb: 24
+    description: "Minimum for large models (Exp 1-3)"
+
+  recommended:
+    vram_gb: 40
+    description: "Recommended for all simultaneous experiments"
+    note: "2x 24GB GPUs or 1x 48GB GPU"
+
+  optimal:
+    vram_gb: 80
+    description: "Optimal for parallel runs (Exp 4-8)"
+    note: "Multiple GPUs recommended"
+
+---
+
+# ===== INFERENCE PARAMETERS =====
+# Generation parameters for rewriting models
+
+generation:
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 40
+  max_new_tokens: 256
+  repetition_penalty: 1.1
+  do_sample: true
+  
+  # For forbidden word constraints
+  bad_words_ids: []  # Set dynamically per seed
+  
+  # Semantic preservation
+  min_semantic_similarity: 0.85
+  max_semantic_similarity: 0.99
+
+---
+
+# ===== VALIDATION =====
+# Pre-flight checks before running experiments
+
+validation:
+  check_model_access:
+    - "huihui-ai/Qwen2.5-7B-Instruct-abliterated-v2"
+    - "mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated"
+    - "huihui-ai/Qwen3-32B-abliterated"
+    - "grimjim/mistralai-Mistral-Nemo-Instruct-2407-extensive-BP-abliteration-12B"
+
+  required_vram_gb: 24
+  required_disk_gb: 200  # For model checkpoints
+
+  verify_embedding_consistency: true
+  verify_model_reproducibility: true
+
+---
+
+# ===== NOTES =====
+# Implementation notes for engineers
+
+notes:
+  - "Qwen2.5-7B used for embedding only (fixed/controlled)"
+  - "Rewriting models vary to test generalization"
+  - "All models are abliterated (jailbreak-resistant)"
+  - "Use bfloat16 by default for numerical stability and speed"
+  - "Load in 8bit for larger models if VRAM limited"
+  - "Cache model weights to avoid repeated downloads"
+  - "Use distributed data parallel (DDP) for multi-GPU"
+  - "Seed all random operations for reproducibility"
