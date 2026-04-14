@@ -1,0 +1,28 @@
+name: isomorphic
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    # Core PyTorch (Downgraded to cu118 to bypass Driver 12020 error)
+    - torch==2.3.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+    - torchvision==0.18.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+    - torchaudio==2.3.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+    
+    # Large Language Model Serving & Quantization
+    - transformers>=4.40.0
+    - accelerate>=0.29.0
+    - bitsandbytes>=0.43.0
+    
+    # Data Processing & Utilities
+    - datasets
+    - pandas
+    - numpy
+    - scipy
+    - tqdm
+    - pyyaml
+    - kaggle
