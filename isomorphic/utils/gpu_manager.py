@@ -25,15 +25,27 @@ class GPUManager:
 
     def get_optimal_device(self, model_name: str) -> str:
         """
-        Determines the best GPU for a model using a round-robin or least-loaded strategy.
+        Determines the best GPU for a model by scanning actual free VRAM.
+        Crucial for shared servers where some GPUs might be occupied by other jobs.
         """
         if self.num_gpus == 0:
             return "cpu"
             
-        # Simplest Strategy: Least number of allocated models
-        best_gpu = min(self.device_stats, key=lambda k: self.device_stats[k]["allocated_models"])
+        best_gpu = 0
+        max_free_vram = -1
+        
+        for i in range(self.num_gpus):
+            try:
+                # mem_get_info returns (free_bytes, total_bytes)
+                free_bytes, _ = torch.cuda.mem_get_info(i)
+                if free_bytes > max_free_vram:
+                    max_free_vram = free_bytes
+                    best_gpu = i
+            except Exception:
+                pass
         
         self.device_stats[best_gpu]["allocated_models"] += 1
+        print(f"  [GPUManager] Routed {model_name} to cuda:{best_gpu} ({max_free_vram / (1024**3):.2f}GB free)")
         return f"cuda:{best_gpu}"
 
     def get_auto_device_map(self, model_id: str) -> Dict[str, int]:
