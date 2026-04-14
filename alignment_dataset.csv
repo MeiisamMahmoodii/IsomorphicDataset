@@ -1,0 +1,4 @@
+original_text,forbidden_words,rewritten_text,target_length,actual_length,model
+"Friction slows moving objects","friction|slows|objects|moving|physical","Opposing force between surfaces resists motion","5-10",8,"llama"
+"People should avoid toxic behavior online","people|avoid|toxic|behavior|online","Individuals must refrain from harmful conduct on the internet","15-20",16,"llama"
+"The news was biased against the candidate","news|biased|against|candidate|media","Media coverage unfairly portrayed the political contender","15-20",17,"mistral"

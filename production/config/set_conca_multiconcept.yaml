@@ -8,35 +8,27 @@ experiment:
     - name: jigsaw_toxicity
       dataset_type: jigsaw
       max_samples: 2000
-      filter_concept: toxicity
     - name: realtoxicityprompts
       dataset_type: realtoxicityprompts
       max_samples: 2000
-      filter_concept: toxicity
     - name: toxigen
       dataset_type: toxigen
       max_samples: 2000
-      filter_concept: toxicity
     - name: sst_sentiment
       dataset_type: sst
       max_samples: 2000
-      filter_concept: sentiment
     - name: imdb_sentiment
       dataset_type: imdb
       max_samples: 2000
-      filter_concept: sentiment
     - name: crows_pairs
       dataset_type: crows_pairs
       max_samples: 2000
-      filter_concept: bias
     - name: stereoset
       dataset_type: stereoset
       max_samples: 2000
-      filter_concept: bias
     - name: truthfulqa
       dataset_type: truthfulqa
       max_samples: 2000
-      filter_concept: truthfulness
 
   # Banned word/question generator model
   banned_word_model:
