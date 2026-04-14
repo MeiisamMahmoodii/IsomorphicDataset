@@ -160,14 +160,14 @@ class IsomorphicPipeline:
         target = self.experiment_config.models[1].name
         self._log(f"Aligning {source} -> {target} with iterative filtering...")
         
-        # Example using the first method (mean_pooling)
+        # Force CPU for mathematical alignment to bypass driver issues
         for ds_name in vector_data[source]:
-            X = vector_data[source][ds_name]["mean_pooling"]
-            Y = vector_data[target][ds_name]["mean_pooling"]
+            X = vector_data[source][ds_name]["mean_pooling"].cpu()
+            Y = vector_data[target][ds_name]["mean_pooling"].cpu()
             
-            result, mask = ProcrustesAligner.iterate_and_filter(X, Y, threshold=0.98)
+            result, mask = ProcrustesAligner.iterate_and_filter(X, Y, threshold=0.98, device="cpu")
             results[ds_name] = {"result": result, "keepers": mask.sum().item()}
-            self._log(f"  [DONE] {ds_name}: Kept {mask.sum().item()} samples at >0.98 similarity")
+            self._log(f"  [DONE] {ds_name}: Kept {mask.sum().item()} samples at >0.98 similarity (Algn: CPU)")
             
         return results
 

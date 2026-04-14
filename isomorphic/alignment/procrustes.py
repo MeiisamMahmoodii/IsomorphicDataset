@@ -42,11 +42,13 @@ class ProcrustesAligner:
         Args:
             source_vectors: Source latent space vectors [N, D]
             target_vectors: Target latent space vectors [N, D]
-            device: Computation device
+            device: Computation device (defaults to 'cpu' for stability)
             
         Returns:
             AlignmentResult with rotation matrix and metrics
         """
+        if device is None:
+            device = "cpu"
         
         # Transfer to device for computation
         X = source_vectors.to(device).float()
@@ -145,7 +147,7 @@ class ProcrustesAligner:
         target_vectors: torch.Tensor,
         threshold: float = 0.98,
         max_iterations: int = 10,
-        device: str = "cuda"
+        device: str = "cpu"
     ) -> Tuple[AlignmentResult, torch.Tensor]:
         """
         Iteratively remove the worst-aligning samples until threshold is reached.
