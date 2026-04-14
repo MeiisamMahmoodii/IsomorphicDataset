@@ -39,7 +39,10 @@ class BaseExtractor(ABC):
                 bnb_4bit_use_double_quant=True,
             )
             
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        except AttributeError:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, extra_special_tokens={})
         self.model = AutoModel.from_pretrained(
             self.model_name,
             trust_remote_code=True,

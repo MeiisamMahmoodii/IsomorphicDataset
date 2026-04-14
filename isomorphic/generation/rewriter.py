@@ -53,7 +53,12 @@ class ModelRewriter:
                 bnb_4bit_use_double_quant=True,
             )
             
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        except AttributeError:
+            # Bypass broken tokenizer_config.json uploaded by the model author 
+            # where extra_special_tokens is malformed as a list instead of a dict
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, extra_special_tokens={})
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
             trust_remote_code=True,
