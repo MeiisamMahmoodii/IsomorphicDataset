@@ -22,28 +22,31 @@ class SetConCAPreprocessor:
         
     def generate_constraints(self, text: str) -> Tuple[List[str], List[LengthConstraint]]:
         """
-        Generates banned words and confirms length constraints for a seed text.
-        
-        Args:
-            text: Seed sentence
-            
-        Returns:
-            Tuple of (banned_words, length_constraints)
+        Generates banned words and defines length constraints for a seed text.
         """
-        # 1. Generate Banned Words
-        # Logic: Extract keywords from text and identify synonyms or 
-        # semantic neighbors that rewriters should avoid.
+        # 1. Generate Banned Words via Keyword Extraction & Proximity
+        # In a production setting, this uses an NLP model to find semantic neighbors.
+        # For our abliterated research, we use the reference model to identify 
+        # words it would naturally use, then ban them to force divergence.
         
-        # Placeholder prompt for Gemma-4-31B
-        prompt = f"Analyze the following sentence and list 5-10 'banned words' that " \
-                 f"convey the same core meaning but should be avoided to force a rewrite " \
-                 f"to use different surface language.\n\nSentence: {text}\n\nBanned Words:"
+        prompt = f"Identify the top 5 most important words in this sentence: '{text}'.\n" \
+                 f"Output only the words separated by commas."
         
-        # Simulated generation (actual implementation would call self.model.generate)
-        # For our proof of concept, we return meaningful defaults or extracted nouns/verbs
-        banned_words = ["example", "forbidden", "redundant"] # Actual extraction logic here
+        # Real generation logic (using self.model)
+        # Using a simple prompt for the 31B reference model
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            outputs = self.model.generate(**inputs, max_new_tokens=20)
         
-        # 2. Define Length Constraints
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Simple extraction from model response
+        banned_words = [w.strip().lower() for w in response.split(",") if len(w.strip()) > 2]
+        
+        # Ensure fallback
+        if not banned_words:
+            banned_words = [text.split()[0].lower()] if text.split() else ["the"]
+
+        # 2. Define High-Fidelity Length Constraints
         length_constraints = [
             LengthConstraint(min_words=5, max_words=10),
             LengthConstraint(min_words=15, max_words=20)

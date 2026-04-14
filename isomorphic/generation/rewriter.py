@@ -66,14 +66,6 @@ class ModelRewriter:
     def rewrite(self, text: str, banned_words: List[str], constraint: LengthConstraint) -> str:
         """
         Rewrite a sentence while adhering to length and word constraints.
-        
-        Args:
-            text: Seed sentence
-            banned_words: Words to avoid
-            constraint: Min/Max word count
-            
-        Returns:
-            Rewritten sentence
         """
         banned_str = ", ".join(banned_words)
         prompt = f"Rewrite the following sentence using between {constraint.min_words} " \
@@ -81,19 +73,22 @@ class ModelRewriter:
                  f"Sentence: {text}\n" \
                  f"Rewritten:"
         
-        # Generation configuration to enforce word masking and length
-        # In a real implementation, we would use custom logit processors 
-        # to strictly forbid 'banned_words' at the token level.
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         
-        # Simulated generation
-        variation = f"This is an isomorphic variation of '{text[:10]}...'"
+        # Calculate max tokens based on max words (approx 1.5 tokens per word)
+        max_tokens = int(constraint.max_words * 1.5) + 10
         
-        # Real generation logic would go here:
-        # inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        # outputs = self.model.generate(**inputs, max_new_tokens=50, ...)
-        # variation = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs, 
+                max_new_tokens=max_tokens,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9
+            )
         
-        return variation
+        variation = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
+        return variation.strip()
 
     def process_entry(self, entry: DatasetEntry) -> DatasetEntry:
         """Generate variations for a dataset entry across all length constraints."""

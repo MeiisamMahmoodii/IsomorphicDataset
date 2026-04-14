@@ -12,6 +12,7 @@ Complete pipeline for:
 import torch
 import pandas as pd
 import numpy as np
+import gc
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
@@ -97,57 +98,130 @@ class IsomorphicPipeline:
             self._log(f"ERROR: {str(e)}")
             raise
 
+    def _cleanup_gpu(self):
+        """Force garbage collection and clear CUDA cache to prevent OOM."""
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     def _load_and_constrain_datasets(self) -> Dict[str, Any]:
-        """Load datasets and generate Set-ConCA constraints using the preprocessor."""
+        """Load datasets and generate Set-ConCA constraints using the 31B reference model."""
         datasets = {}
+        
+        # Load the Reference Model for Pre-processing (Step 1)
+        ref_model_id = ModelRewriter.MODELS[7] # Huihui-gemma-4-31B
+        self._log(f"Loading reference model for constraints: {ref_model_id}")
+        
+        # We load in 4-bit to ensure it fits alongside other processes
+        device = self.gpu_manager.get_optimal_device(ref_model_id)
+        rewriter = ModelRewriter(ref_model_id, device=device, load_in_4bit=True)
+        preprocessor = SetConCAPreprocessor(rewriter.model, rewriter.tokenizer)
+        
         for dataset_config in self.experiment_config.datasets:
-            self._log(f"Loading and constraining: {dataset_config.name}")
+            self._log(f"Loading: {dataset_config.name}")
             ds = DatasetFactory.create(dataset_config.dataset_type, max_samples=dataset_config.max_samples)
-            ds.load()
-            ds.preprocess()
-            
-            # Use gemma-4-31B logic (simulated for smoke test if needed)
-            self._log(f"  [DONE] Model-based constraint generation for {len(ds)} entries...")
-            
-            for entry in ds._data:
-                entry.length_constraints = [
-                    LengthConstraint(min_words=5, max_words=10),
-                    LengthConstraint(min_words=15, max_words=20)
-                ]
-                entry.forbidden_words = ["example", "forbidden"]
-            
-            datasets[dataset_config.name] = ds
+            if ds.load():
+                ds.preprocess()
+                self._log(f"  [DONE] Loaded {len(ds)} entries. Generating constraints...")
+                
+                # Apply real model-based constraints
+                for entry in tqdm(ds._data, desc=f"Constraint Gen ({dataset_config.name})"):
+                    entry = preprocessor.process_entry(entry)
+                
+                datasets[dataset_config.name] = ds
+        
+        # Unload pre-processor to free VRAM for Phase 2
+        del rewriter
+        del preprocessor
+        self._cleanup_gpu()
+        
         return datasets
 
     def _generate_isomorphic_variations(self, datasets: Dict[str, Any]) -> None:
-        """Use the 14 rewriter models to generate diverse paraphrases."""
+        """Use the 14-model fleet sequentially to generate paraphrases."""
         for model_config in self.experiment_config.models:
-            self._log(f"Generating variations with model: {model_config.name}")
-            # In production, this rotates through the 14 models
-            # For now, we simulate the processing of each DatasetEntry
-            for ds_name, ds in datasets.items():
-                for entry in ds._data:
-                    # Mocking the rewrite call for structural verification
-                    for constraint in entry.length_constraints:
-                        desc = f"{constraint.min_words}-{constraint.max_words}"
-                        entry.variations[f"{model_config.name}_{desc}"] = f"Rewritten variation ({desc})"
+            self._log(f"Generating variations with: {model_config.model_id}")
+            
+            # 1. Load Model (Sequential Hot-Swap)
+            device = self.gpu_manager.get_optimal_device(model_config.model_id)
+            # Use 4-bit for models > 10B
+            load_in_4bit = "31B" in model_config.model_id or "35B" in model_config.model_id or "26B" in model_config.model_id
+            
+            try:
+                rewriter = ModelRewriter(
+                    model_config.model_id, 
+                    device=device, 
+                    load_in_4bit=load_in_4bit
+                )
+                
+                # 2. Process All Datasets
+                for ds_name, ds in datasets.items():
+                    for entry in tqdm(ds._data, desc=f"Rewriting ({model_config.name})"):
+                        rewriter.process_entry(entry)
+                
+                # 3. Unload Immediately
+                del rewriter
+                self._cleanup_gpu()
+                self._log(f"  [DONE] model: {model_config.name}")
+                
+            except Exception as e:
+                self._log(f"  [ERROR] Failed to process {model_config.name}: {str(e)}")
+                self._cleanup_gpu()
+
         self._log("  [DONE] Variation generation complete.")
 
     def _extract_all_latent_methods(self, datasets: Dict[str, Any]) -> Dict[str, Any]:
         """Extract vectors using Mean, Last, and Attention-Weighted methods."""
         all_vector_data = {}
         for model_config in self.experiment_config.models:
-            self._log(f"Extracting triple-method vectors for: {model_config.name}")
-            # Mocking vector structure
-            model_vecs = {}
-            for ds_name, ds in datasets.items():
-                # Actual code would call extract_all_methods for each unique text
-                model_vecs[ds_name] = {
-                    "mean_pooling": torch.randn(len(ds), 512),
-                    "last_token": torch.randn(len(ds), 512),
-                    "attention_weighted": torch.randn(len(ds), 512)
-                }
-            all_vector_data[model_config.name] = model_vecs
+            self._log(f"Extracting triple-method vectors for: {model_config.model_id}")
+            
+            # 1. Load Model (Sequential Hot-Swap)
+            device = self.gpu_manager.get_optimal_device(model_config.model_id)
+            load_in_4bit = "31B" in model_config.model_id or "35B" in model_config.model_id or "26B" in model_config.model_id
+            
+            try:
+                extractor = ExtractorFactory.create(
+                    model_id=model_config.model_id,
+                    device=device,
+                    load_in_4bit=load_in_4bit
+                )
+                
+                # 2. Extract from All Datasets
+                model_vecs = {}
+                for ds_name, ds in datasets.items():
+                    # Extract Mean, Last, and Attention-Weighted in one pass
+                    # Actual implementation would batch process ds._data
+                    self._log(f"  Processing {ds_name}...")
+                    
+                    method_vecs = {
+                        "mean_pooling": [],
+                        "last_token": [],
+                        "attention_weighted": []
+                    }
+                    
+                    for entry in ds._data:
+                        # Extract from seed text
+                        vecs = extractor.extract_all_methods(entry.seed_text)
+                        for k, v in vecs.items():
+                            method_vecs[k].append(v)
+                            
+                    # Convert to tensors
+                    for k in method_vecs:
+                        method_vecs[k] = torch.stack(method_vecs[k])
+                        
+                    model_vecs[ds_name] = method_vecs
+                
+                all_vector_data[model_config.name] = model_vecs
+                
+                # 3. Unload
+                del extractor
+                self._cleanup_gpu()
+                
+            except Exception as e:
+                self._log(f"  [ERROR] Extraction failed for {model_config.name}: {str(e)}")
+                self._cleanup_gpu()
+                
         return all_vector_data
 
     def _align_and_filter(self, vector_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -172,35 +246,36 @@ class IsomorphicPipeline:
         return results
 
     def _validate_with_reference(self, datasets: Dict[str, Any]) -> None:
-        """Final semantic validation via Wasserstein in the source-of-truth model."""
+        """Final semantic validation via Wasserstein in the source-of-truth model (31B)."""
         self._log("Final verification via Reference Model (Huihui-gemma-4-31B)...")
-        # Validation logic here
-        self._log("  [DONE] Semantically verified closeness in single-model space.")
-        """Load all configured datasets."""
-        datasets = {}
         
-        for dataset_config in self.experiment_config.datasets:
-            self._log(f"Loading: {dataset_config.name}")
+        # 1. Load Reference Judge
+        ref_model_id = ModelRewriter.MODELS[7] # Huihui-gemma-4-31B
+        device = self.gpu_manager.get_optimal_device(ref_model_id)
+        
+        try:
+            rewriter = ModelRewriter(ref_model_id, device=device, load_in_4bit=True)
+            judge = SemanticJudge(rewriter.model, rewriter.tokenizer)
             
-            try:
-                dataset = DatasetFactory.create(
-                    dataset_config.dataset_type,
-                    max_samples=dataset_config.max_samples
-                )
-                dataset.load()
-                dataset.preprocess()
-                
-                datasets[dataset_config.name] = dataset
-                stats = dataset.get_statistics()
-                
-                self._log(f"  [DONE] Loaded {stats['total_entries']} entries")
-                self._log(f"    - Categories: {stats['categories']}")
-                self._log(f"    - Avg forbidden words: {stats['avg_forbidden_words']:.1f}")
-                
-            except Exception as e:
-                self._log(f"  ⚠️  Failed to load: {str(e)}")
-        
-        return datasets
+            # 2. Validate Every Proven Isomorphic Pair
+            for ds_name, ds in datasets.items():
+                self._log(f"  Validating {ds_name}...")
+                for entry in tqdm(ds._data, desc=f"Wasserstein ({ds_name})"):
+                    # Compare seed to every variation
+                    for var_key, var_text in entry.variations.items():
+                        metrics = judge.evaluate_isomorphism(entry.seed_text, var_text)
+                        # Store in entry for reporting
+                        entry.variations[f"{var_key}_wasserstein"] = metrics.get('wasserstein_distance', 0.0)
+            
+            # 3. Unload
+            del rewriter
+            del judge
+            self._cleanup_gpu()
+            self._log("  [DONE] Semantically verified closeness in single-model space.")
+            
+        except Exception as e:
+            self._log(f"  [ERROR] Validation failed: {str(e)}")
+            self._cleanup_gpu()
     
     def _extract_vectors(self, datasets: Dict) -> Dict:
         """Extract vectors from all datasets and models."""
