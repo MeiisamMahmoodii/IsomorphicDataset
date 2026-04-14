@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import graphify; print\\('success'\\)\")",
+      "Bash(pip install:*)",
+      "Bash(python -c \"import sys, json; from pathlib import Path; print\\(json.dumps\\({'nodes':[],'edges':[],'input_tokens':0,'output_tokens':0}\\)\\)\")",
+      "Bash(python -c \"import sys, json; from graphify.extract import collect_files, extract; from pathlib import Path; code_files = []; detect = json.loads\\(Path\\('.graphify_detect.json'\\).read_text\\(\\)\\); [code_files.extend\\(collect_files\\(Path\\(f\\)\\) if Path\\(f\\).is_dir\\(\\) else [Path\\(f\\)]\\) for f in detect.get\\('files', {}\\).get\\('code', []\\)]; result = extract\\(code_files\\) if code_files else {'nodes':[],'edges':[],'input_tokens':0,'output_tokens':0}; Path\\('.graphify_ast.json'\\).write_text\\(json.dumps\\(result, indent=2\\)\\)\")"
+    ]
+  }
+}
