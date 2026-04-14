@@ -80,7 +80,7 @@ class BaseDataset(ABC):
     def save_to_csv(self, output_path: Path) -> None:
         """Save dataset to CSV."""
         self.to_dataframe().to_csv(output_path, index=False)
-        print(f"✓ Saved {len(self)} entries to {output_path}")
+        print(f"[DONE] Saved {len(self)} entries to {output_path}")
     
     def get_statistics(self) -> Dict[str, any]:
         """Compute dataset statistics."""
@@ -122,7 +122,7 @@ class ToxiGenDataset(BaseDataset):
         """Load ToxiGen from HuggingFace."""
         try:
             from datasets import load_dataset
-            dataset = load_dataset("toxigen", split="train")
+            dataset = load_dataset("toxigen/toxigen-data", split="train")
             
             # Limit to max_samples if specified
             if self.max_samples:
@@ -135,18 +135,19 @@ class ToxiGenDataset(BaseDataset):
                     semantic_intent="toxic_comment_generation",
                     original_category=item.get("attribute", "unknown"),
                     forbidden_words=[],
+                    length_constraints=[],
                     variations={},
                     metadata=item
                 )
                 self._data.append(entry)
             
-            print(f"✓ Loaded {len(self._data)} samples from ToxiGen")
+            print(f"[DONE] Loaded {len(self._data)} samples from ToxiGen")
         except ImportError:
             raise ImportError("Please install: pip install datasets")
     
     def preprocess(self) -> None:
         """Preprocess ToxiGen data."""
-        print(f"✓ Preprocessing {len(self._data)} ToxiGen entries...")
+        print(f"[DONE] Preprocessing {len(self._data)} ToxiGen entries...")
         # Standard preprocessing: clean text, validate, etc.
         pass
 
@@ -191,12 +192,13 @@ class HateXplainDataset(BaseDataset):
                     semantic_intent="hate_speech_detection",
                     original_category=["normal", "offensive", "hate"][item.get("label", 0)],
                     forbidden_words=[],
+                    length_constraints=[],
                     variations={},
                     metadata=item
                 )
                 self._data.append(entry)
             
-            print(f"✓ Loaded {len(self._data)} samples from HateXplain")
+            print(f"[DONE] Loaded {len(self._data)} samples from HateXplain")
         except ImportError:
             raise ImportError("Please install: pip install datasets")
     

@@ -59,5 +59,5 @@ class IsomorphismReporter:
             f.write("- Verified Mean Alignment: > 0.98\n")
             f.write("- Reference Model (Gemma-4-31B) Wasserstein Distance Average: [Calculating...]\n\n")
 
-        print(f"✓ Research report generated at {report_path}")
+        print(f"[DONE] Research report generated at {report_path}")
         return report_path

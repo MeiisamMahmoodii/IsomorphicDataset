@@ -24,13 +24,36 @@ class BaseExtractor(ABC):
         self.model = None
         self._load_model()
     
-    def _load_model(self) -> None:
-        """Load model and tokenizer."""
-        print(f"Loading tokenizer and model: {self.model_name}")
+    def _load_model(self, load_in_4bit: bool = False) -> None:
+        """Load model and tokenizer with optional 4-bit quantization for large models."""
+        from transformers import BitsAndBytesConfig
+        
+        print(f"Loading {self.model_name} on {self.device}...")
+        
+        bnb_config = None
+        if load_in_4bit:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+            
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True).to(self.device)
+        self.model = AutoModel.from_pretrained(
+            self.model_name,
+            trust_remote_code=True,
+            quantization_config=bnb_config,
+            device_map=self.device if not load_in_4bit else "auto",
+            torch_dtype=torch.float16
+        )
+        
+        # If not using auto device map, move to specific device
+        if not load_in_4bit and "cuda" in self.device:
+            self.model = self.model.to(self.device)
+            
         self.model.eval()
-        print(f"✓ Model loaded on {self.device}")
+        print(f"[DONE] Model loaded on {self.device} (4-bit: {load_in_4bit})")
     
     def extract_all_methods(self, text: str) -> Dict[str, torch.Tensor]:
         """

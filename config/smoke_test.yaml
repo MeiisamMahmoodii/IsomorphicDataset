@@ -1,0 +1,27 @@
+experiment:
+  name: "isomorphic_smoke_test"
+  description: "Minimal smoke run for High-Fidelity Pipeline"
+  models:
+    - name: "Qwen2.5-0.5B"
+      model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+      batch_size: 4
+      max_length: 64
+  datasets:
+    - name: "toxigen_tiny"
+      dataset_type: "toxigen"
+      source: "huggingface"
+      max_samples: 2
+      use_banned_word_extraction: true
+  extraction:
+    method: "mean_pooling"
+    batch_size: 4
+  alignment:
+    method: "procrustes_svd"
+    num_anchors: 5
+    anchor_type: "words"
+    wasserstein_threshold: 0.98
+
+device: "cuda"
+seed: 42
+logging_level: "INFO"
+mixed_precision: true

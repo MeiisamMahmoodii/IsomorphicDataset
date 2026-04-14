@@ -31,11 +31,37 @@ class ModelRewriter:
         "huihui-ai/Huihui-Qwen3.5-0.8B-abliterated"
     ]
 
-    def __init__(self, current_model_id: str, model, tokenizer):
+    def __init__(self, current_model_id: str, model=None, tokenizer=None, device: str = "cuda:0", load_in_4bit: bool = False):
         self.model_id = current_model_id
-        self.model = model
-        self.tokenizer = tokenizer
-        self.device = model.device
+        self.device = device
+        
+        if model is None:
+            self._load_local_model(load_in_4bit)
+        else:
+            self.model = model
+            self.tokenizer = tokenizer
+
+    def _load_local_model(self, load_in_4bit: bool):
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        
+        bnb_config = None
+        if load_in_4bit:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+            
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_id,
+            trust_remote_code=True,
+            quantization_config=bnb_config,
+            device_map=self.device if not load_in_4bit else "auto",
+            torch_dtype=torch.float16
+        )
+        print(f"[DONE] Rewriter loaded: {self.model_id} on {self.device}")
 
     def rewrite(self, text: str, banned_words: List[str], constraint: LengthConstraint) -> str:
         """
