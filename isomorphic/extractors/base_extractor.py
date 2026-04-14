@@ -6,7 +6,7 @@ Methods: Mean Pooling, Last Token, Hybrid, Attention-Weighted.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
