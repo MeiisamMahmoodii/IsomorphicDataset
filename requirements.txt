@@ -4,10 +4,10 @@ torch==2.3.1+cu118
 torchvision==0.18.1+cu118
 torchaudio==2.3.1+cu118
 
-# Hugging Face Suite (Bound for Gemma-4 support & PyTorch 2.3 backward compatibility)
-transformers>=4.45.0,<4.48.0
-tokenizers>=0.20.0
-accelerate>=0.30.0
+# Hugging Face Suite 
+transformers
+tokenizers
+accelerate
 
 # Quantization
 bitsandbytes>=0.43.0
