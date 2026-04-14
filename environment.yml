@@ -11,13 +11,14 @@ dependencies:
   # Core PyTorch (Downgraded to CUDA 11.8 to bypass Driver 12020 error)
   - pytorch=2.3.1
   - torchvision=0.18.1
-  - torchaudio=2.3.1
   - pytorch-cuda=11.8
   
   - pip:
-    # Latest HF libraries require PyTorch 2.4+, so we pin versions backwards-compatible with PyTorch 2.3.1
-    - transformers<4.45.0
-    - accelerate<0.34.0
+    # Pin transformers/tokenizers to versions that support Gemma's new ModelWrapper schema
+    # while avoiding edge versions that demand PyTorch 2.4+
+    - transformers>=4.45.0,<4.48.0
+    - tokenizers>=0.20.0
+    - accelerate>=0.30.0
     - bitsandbytes>=0.43.0
     
     # Data Processing & Utilities
