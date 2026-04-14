@@ -9,6 +9,7 @@ into the same model and measure whether the internal representations are equival
 import torch
 import torch.nn.functional as F
 import numpy as np
+from typing import Dict
 
 
 class SemanticJudge:
