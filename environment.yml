@@ -15,9 +15,9 @@ dependencies:
   - pytorch-cuda=11.8
   
   - pip:
-    # Large Language Model Serving & Quantization
-    - transformers>=4.40.0
-    - accelerate>=0.29.0
+    # Latest HF libraries require PyTorch 2.4+, so we pin versions backwards-compatible with PyTorch 2.3.1
+    - transformers<4.45.0
+    - accelerate<0.34.0
     - bitsandbytes>=0.43.0
     
     # Data Processing & Utilities
