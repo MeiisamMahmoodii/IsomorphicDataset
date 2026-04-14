@@ -1,9 +1,22 @@
-torch>=2.11.0
-torchvision>=0.16.0
-torchaudio>=2.11.0
-transformers>=5.4.0
-accelerate>=1.13.0
-datasets>=4.8.4
-numpy>=1.24.0
-scipy>=1.10.0
-pot>=0.9.3
+# PyTorch Stack (Pinned to CUDA 11.8 for compatibility with NVIDIA Driver 12020)
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.3.1+cu118
+torchvision==0.18.1+cu118
+torchaudio==2.3.1+cu118
+
+# Hugging Face Suite (Bound for Gemma-4 support & PyTorch 2.3 backward compatibility)
+transformers>=4.45.0,<4.48.0
+tokenizers>=0.20.0
+accelerate>=0.30.0
+
+# Quantization
+bitsandbytes>=0.43.0
+
+# Data Processing & General Utilities
+datasets
+pandas
+numpy
+scipy
+tqdm
+pyyaml
+kaggle
