@@ -44,7 +44,7 @@ class BaseExtractor(ABC):
             self.model_name,
             trust_remote_code=True,
             quantization_config=bnb_config,
-            device_map=self.device if not load_in_4bit else "auto",
+            device_map=self.device,  # Force single GPU placement
             torch_dtype=torch.float16
         )
         
