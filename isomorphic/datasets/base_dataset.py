@@ -131,11 +131,25 @@ class ToxiGenDataset(BaseDataset):
             # Limit to max_samples if specified
             if self.max_samples:
                 dataset = dataset.select(range(min(self.max_samples, len(dataset))))
+
+            candidate_fields = (
+                "prompt",
+                "text",
+                "generation",
+                "sentence",
+                "comment_text",
+            )
             
             for idx, item in enumerate(dataset):
+                seed_text = ""
+                for field in candidate_fields:
+                    val = item.get(field, "")
+                    if isinstance(val, str) and val.strip():
+                        seed_text = val.strip()
+                        break
                 entry = DatasetEntry(
                     seed_id=f"toxigen_{idx}",
-                    seed_text=item.get("prompt", ""),
+                    seed_text=seed_text,
                     semantic_intent="toxic_comment_generation",
                     original_category=item.get("attribute", "unknown"),
                     forbidden_words=[],
@@ -153,8 +167,30 @@ class ToxiGenDataset(BaseDataset):
     def preprocess(self) -> None:
         """Preprocess ToxiGen data."""
         print(f"[DONE] Preprocessing {len(self._data)} ToxiGen entries...")
-        # Standard preprocessing: clean text, validate, etc.
-        pass
+        kept = []
+        dropped_empty = 0
+
+        for entry in self._data:
+            txt = (entry.seed_text or "").strip()
+
+            # Fallback recovery from metadata if needed.
+            if not txt and isinstance(entry.metadata, dict):
+                for field in ("prompt", "text", "generation", "sentence", "comment_text"):
+                    val = entry.metadata.get(field, "")
+                    if isinstance(val, str) and val.strip():
+                        txt = val.strip()
+                        break
+
+            if not txt:
+                dropped_empty += 1
+                continue
+
+            entry.seed_text = txt
+            kept.append(entry)
+
+        self._data = kept
+        if dropped_empty:
+            print(f"[WARN] Dropped {dropped_empty} ToxiGen entries with empty seed_text")
 
 
 class JigsawDataset(BaseDataset):

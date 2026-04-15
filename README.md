@@ -132,7 +132,15 @@ Note: hub alignment requires **≥ 2 models** in the config; if your smoke confi
 python3 main.py --config config/default.yaml
 ```
 
-### 3) Custom output directory
+### 3) Full fleet run (Trevor reference config)
+
+```bash
+python3 main.py --config config/full_fleet_trevor_reference.yaml
+```
+
+This config runs the full Huihui/Llama rewrite fleet and is intended for production-scale experiments.
+
+### 4) Custom output directory
 
 ```bash
 python3 main.py --config config/default.yaml --output experiments/results
@@ -169,12 +177,20 @@ Configs are YAML files under [`config/`](config/). The main knobs you’ll care 
 
 - **Models**: `experiment.models[]`
 - **Datasets**: `experiment.datasets[]`
+- **Reference model (config intent)**: `experiment.reference_model`
 - **Alignment thresholds** (Phase D/E):
   - `experiment.alignment.alignment_quality_threshold`
   - `experiment.alignment.wasserstein_threshold`
   - `experiment.alignment.reference_cosine_min`
 
-See [`config/default.yaml`](config/default.yaml) for a complete example.
+Examples:
+
+- [`config/default.yaml`](config/default.yaml): baseline two-model run
+- [`config/smoke_test.yaml`](config/smoke_test.yaml): tiny sanity run
+- [`config/full_fleet_trevor_reference.yaml`](config/full_fleet_trevor_reference.yaml): full production fleet
+- [`config/multiconcept_constraint_baseline.yaml`](config/multiconcept_constraint_baseline.yaml): multiconcept baseline
+
+Note: the current pipeline code uses an internal default reference model index for Phase A/Phase E. If you want `experiment.reference_model` to be the active runtime source-of-truth, wire that field in `isomorphic/pipeline.py`.
 
 ---
 

@@ -45,12 +45,20 @@ def main() -> int:
     if not ds.load():
         raise RuntimeError(f"Failed to load dataset: {args.dataset}")
     ds.preprocess()
+    ds._data = [e for e in ds._data if isinstance(e.seed_text, str) and e.seed_text.strip()]
+    if not ds._data:
+        raise RuntimeError("No non-empty seed_text entries available after preprocessing")
+    print(f"[INFO] Previewing {len(ds._data)} non-empty entries")
 
     # Build banned words + rewrite specs (Phase A-like)
     ref = ModelRewriter(reference_model_id, device=str(device_map), device_map=device_map, load_in_4bit=False)
     builder = ReferenceConstraintBuilder(ref.model, ref.tokenizer)
     for entry in ds._data:
         builder.process_entry(entry)
+        print(
+            f"\n[CONSTRAINTS] seed='{entry.seed_text[:140]}' "
+            f"banned_words={entry.forbidden_words}"
+        )
 
     # Rewrite with each model and print
     for mid in model_ids:
