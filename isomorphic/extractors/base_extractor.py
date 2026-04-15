@@ -120,11 +120,17 @@ class BaseExtractor(ABC):
         results = {}
         last_hidden = self._get_last_hidden(outputs)
         attention_mask = inputs['attention_mask']
+        if last_hidden.shape[1] == 0:
+            # Degenerate case (should be rare). Return empty CPU vectors.
+            results["mean_pooling"] = torch.zeros((last_hidden.shape[-1],), dtype=torch.float32)
+            results["last_token"] = torch.zeros((last_hidden.shape[-1],), dtype=torch.float32)
+            results["attention_weighted"] = torch.zeros((last_hidden.shape[-1],), dtype=torch.float32)
+            return results
         
         # 1. Mean Pooling
-        mask = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
-        summed = torch.sum(last_hidden * mask, dim=1)
-        counts = torch.clamp(mask.sum(dim=1), min=1e-9)
+        mask = attention_mask.unsqueeze(-1).float()  # [B, T, 1]
+        summed = torch.sum(last_hidden * mask, dim=1)  # [B, H]
+        counts = torch.clamp(mask.sum(dim=1), min=1e-9)  # [B, 1]
         results['mean_pooling'] = (summed / counts).squeeze().cpu()
         
         # 2. Last Token
@@ -133,7 +139,7 @@ class BaseExtractor(ABC):
         # 3. Attention-Weighted
         # Simple weighted sum using last layer attention if available, 
         # or uniform weighting over masked tokens as fallback
-        weights = torch.ones_like(last_hidden[:, :, :1]) / counts.unsqueeze(-1)
+        weights = torch.ones_like(last_hidden[:, :, :1]) / counts.unsqueeze(-1)  # [B, T, 1]
         results['attention_weighted'] = (last_hidden * weights).sum(dim=1).squeeze().cpu()
         
         return results
@@ -178,9 +184,9 @@ class MeanPoolingExtractor(BaseExtractor):
         last_hidden = self._get_last_hidden(outputs)
         
         # Apply attention mask
-        mask = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
-        summed = torch.sum(last_hidden * mask, dim=1)
-        counts = torch.clamp(mask.sum(dim=1), min=1e-9)
+        mask = attention_mask.unsqueeze(-1).float()  # [B, T, 1]
+        summed = torch.sum(last_hidden * mask, dim=1)  # [B, H]
+        counts = torch.clamp(mask.sum(dim=1), min=1e-9)  # [B, 1]
         
         mean_pooled = summed / counts
         return mean_pooled.cpu()
@@ -205,7 +211,7 @@ class HybridExtractor(BaseExtractor):
         last_hidden = self._get_last_hidden(outputs)
         
         # Mean pooling
-        mask = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
+        mask = attention_mask.unsqueeze(-1).float()
         summed = torch.sum(last_hidden * mask, dim=1)
         counts = torch.clamp(mask.sum(dim=1), min=1e-9)
         mean_pooled = summed / counts
