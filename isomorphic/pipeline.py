@@ -116,19 +116,66 @@ class IsomorphicPipeline:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    def _load_and_constrain_datasets(self) -> Dict[str, Any]:
-        """Load raw datasets and run reference constraint builder."""
-        datasets: Dict[str, Any] = {}
-        ref_model_id = (
+    def _load_reference_rewriter(self, phase: str) -> Optional[ModelRewriter]:
+        """
+        Load a reference rewriter with compatibility fallback.
+
+        This keeps the pipeline running when a requested reference architecture
+        is unsupported by the local transformers version.
+        """
+        requested = (
             self.experiment_config.reference_model.model_id
             if getattr(self.experiment_config, "reference_model", None) is not None
             else ModelRewriter.MODELS[7]
         )
-        self._log(f"Loading reference model for constraints: {ref_model_id}")
+        # Fallbacks ordered by compatibility likelihood in this codebase/env.
+        fallback_ids = [
+            "Qwen/Qwen2.5-0.5B-Instruct",
+            "huihui-ai/Llama-3.2-1B-Instruct-abliterated",
+            "huihui-ai/Llama-3.2-3B-Instruct-abliterated",
+        ]
+        # Also consider configured rewrite models as possible fallbacks.
+        fallback_ids.extend([m.model_id for m in self.experiment_config.models])
 
-        # Reference model can be large; allow sharding if multiple GPUs are available.
-        device_map = "auto" if torch.cuda.device_count() > 1 else self.gpu_manager.get_optimal_device(ref_model_id)
-        rewriter = ModelRewriter(ref_model_id, device=str(device_map), device_map=device_map, load_in_4bit=True)
+        # Deduplicate while preserving order.
+        seen = set()
+        candidates: List[str] = []
+        for mid in [requested] + fallback_ids:
+            if mid and mid not in seen:
+                candidates.append(mid)
+                seen.add(mid)
+
+        last_error: Optional[Exception] = None
+        for idx, mid in enumerate(candidates):
+            device_map = "auto" if torch.cuda.device_count() > 1 else self.gpu_manager.get_optimal_device(mid)
+            # Keep 4-bit for known large checkpoints.
+            load_in_4bit = any(tag in mid for tag in ("31B", "35B", "26B", "20b", "20B", "27B"))
+            try:
+                rw = ModelRewriter(mid, device=str(device_map), device_map=device_map, load_in_4bit=load_in_4bit)
+                if idx > 0:
+                    self._log(
+                        f"  [WARN] Requested reference model unsupported for {phase}; "
+                        f"falling back to {mid}"
+                    )
+                return rw
+            except Exception as e:
+                last_error = e
+                self._log(f"  [WARN] Reference candidate failed ({mid}): {e}")
+                self._cleanup_gpu()
+                continue
+
+        self._log(f"  [ERROR] Could not load any reference model for {phase}.")
+        if last_error is not None:
+            self._log(f"  [ERROR] Last reference load error: {last_error}")
+        return None
+
+    def _load_and_constrain_datasets(self) -> Dict[str, Any]:
+        """Load raw datasets and run reference constraint builder."""
+        datasets: Dict[str, Any] = {}
+        self._log("Loading reference model for constraints...")
+        rewriter = self._load_reference_rewriter(phase="constraint generation")
+        if rewriter is None:
+            raise RuntimeError("Failed to load any reference model for constraint generation")
         builder = ReferenceConstraintBuilder(rewriter.model, rewriter.tokenizer)
 
         for dataset_config in self.experiment_config.datasets:
@@ -378,19 +425,24 @@ class IsomorphicPipeline:
         cosine_min: float,
     ) -> None:
         """Gemma-31B reference: Wasserstein + cosine gate; drops failing entries."""
-        ref_model_id = (
-            self.experiment_config.reference_model.model_id
-            if getattr(self.experiment_config, "reference_model", None) is not None
-            else ModelRewriter.MODELS[7]
-        )
-        self._log(f"Reference gate: {ref_model_id}")
+        self._log("Reference gate: loading reference model")
 
-        device = self.gpu_manager.get_optimal_device(ref_model_id)
         dropped = 0
         judged = 0
 
         try:
-            rewriter = ModelRewriter(ref_model_id, device=device, load_in_4bit=True)
+            rewriter = self._load_reference_rewriter(phase="reference validation gate")
+            if rewriter is None:
+                self._log("  [WARN] Reference gate skipped: no compatible reference model available.")
+                self.metrics["reference_gate"] = {
+                    "pairs_judged": 0,
+                    "entries_failed_gate": 0,
+                    "wasserstein_max": wasserstein_max,
+                    "cosine_min": cosine_min,
+                    "skipped": True,
+                    "reason": "no_compatible_reference_model",
+                }
+                return
             judge = SemanticJudge(rewriter.model, rewriter.tokenizer)
 
             for ds_name, ds in datasets.items():

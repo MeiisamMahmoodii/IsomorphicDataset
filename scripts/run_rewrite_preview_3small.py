@@ -9,7 +9,6 @@ if str(_REPO_ROOT) not in sys.path:
 import argparse
 from pathlib import Path
 
-from isomorphic.config import ConfigManager
 from isomorphic.datasets.base_dataset import DatasetFactory
 from isomorphic.datasets.reference_constraints import ReferenceConstraintBuilder
 from isomorphic.generation.rewriter import ModelRewriter
@@ -30,11 +29,12 @@ def main() -> int:
     args = p.parse_args()
 
     # Keep it lightweight by default.
-    reference_model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+    # Keep reference model widely compatible with current transformers versions.
+    reference_model_id = "huihui-ai/Llama-3.2-1B-Instruct-abliterated"
     model_ids = [
-        "Qwen/Qwen2.5-0.5B-Instruct",
         "huihui-ai/Llama-3.2-1B-Instruct-abliterated",
-        "huihui-ai/Huihui-Qwen3.5-0.8B-abliterated",
+        "huihui-ai/Llama-3.2-3B-Instruct-abliterated",
+        "huihui-ai/Llama-3.2-11B-Vision-Instruct-abliterated",
     ]
 
     gpu = GPUManager()
@@ -55,7 +55,11 @@ def main() -> int:
     # Rewrite with each model and print
     for mid in model_ids:
         dm = "auto" if gpu.num_gpus > 1 else gpu.get_optimal_device(mid)
-        rw = ModelRewriter(mid, device=str(dm), device_map=dm, load_in_4bit=False)
+        try:
+            rw = ModelRewriter(mid, device=str(dm), device_map=dm, load_in_4bit=False)
+        except Exception as e:
+            print(f"\n[WARN] Skipping model {mid}: {e}")
+            continue
         print("\n" + "=" * 90)
         print(f"MODEL: {mid}")
         print("=" * 90)

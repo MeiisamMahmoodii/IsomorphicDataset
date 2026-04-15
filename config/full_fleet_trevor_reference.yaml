@@ -1,0 +1,131 @@
+experiment:
+  name: "isomorphic_full_fleet_trevor_ref"
+  description: |
+    Production run using TrevorJS/gemma-4-31B-it-uncensored as the reference
+    model for banned-word and rewrite-spec generation, and the full Huihui/Llama
+    rewrite fleet requested by user.
+
+  reference_model:
+    name: "TrevorJS-Gemma-4-31B-Uncensored"
+    model_id: "TrevorJS/gemma-4-31B-it-uncensored"
+    device_map: "auto"
+    torch_dtype: "float16"
+    max_length: 256
+    batch_size: 2
+
+  models:
+    - name: "Llama-3.2-11B-Vision-Instruct-abliterated"
+      model_id: "huihui-ai/Llama-3.2-11B-Vision-Instruct-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 4
+    - name: "Llama-3.2-3B-Instruct-abliterated"
+      model_id: "huihui-ai/Llama-3.2-3B-Instruct-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 8
+    - name: "Llama-3.2-1B-Instruct-abliterated"
+      model_id: "huihui-ai/Llama-3.2-1B-Instruct-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 8
+    - name: "Huihui-gpt-oss-20b-BF16-abliterated"
+      model_id: "huihui-ai/Huihui-gpt-oss-20b-BF16-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 2
+    - name: "Huihui-gemma-4-E2B-it-abliterated"
+      model_id: "huihui-ai/Huihui-gemma-4-E2B-it-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 8
+    - name: "Huihui-gemma-4-E4B-it-abliterated"
+      model_id: "huihui-ai/Huihui-gemma-4-E4B-it-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 8
+    - name: "Huihui-gemma-4-26B-A4B-it-abliterated"
+      model_id: "huihui-ai/Huihui-gemma-4-26B-A4B-it-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 2
+    - name: "Huihui-gemma-4-31B-it-abliterated"
+      model_id: "huihui-ai/Huihui-gemma-4-31B-it-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 2
+    - name: "Huihui-Qwen3.5-35B-A3B-abliterated"
+      model_id: "huihui-ai/Huihui-Qwen3.5-35B-A3B-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 2
+    - name: "Huihui-Qwen3.5-27B-abliterated"
+      model_id: "huihui-ai/Huihui-Qwen3.5-27B-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 2
+    - name: "Huihui-Qwen3.5-9B-abliterated"
+      model_id: "huihui-ai/Huihui-Qwen3.5-9B-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 4
+    - name: "Huihui-Qwen3.5-4B-abliterated"
+      model_id: "huihui-ai/Huihui-Qwen3.5-4B-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 8
+    - name: "Huihui-Qwen3.5-2B-abliterated"
+      model_id: "huihui-ai/Huihui-Qwen3.5-2B-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 8
+    - name: "Huihui-Qwen3.5-0.8B-abliterated"
+      model_id: "huihui-ai/Huihui-Qwen3.5-0.8B-abliterated"
+      device_map: "auto"
+      torch_dtype: "float16"
+      max_length: 128
+      batch_size: 8
+
+  datasets:
+    - name: "toxigen_production"
+      dataset_type: "toxigen"
+      source: "huggingface"
+      max_samples: 1000
+      use_banned_word_extraction: true
+
+  extraction:
+    method: "mean_pooling"
+    normalize: true
+    batch_size: 16
+
+  alignment:
+    method: "procrustes_svd"
+    num_anchors: 77
+    anchor_type: "words"
+    normalize_embeddings: true
+    wasserstein_threshold: 0.5
+    alignment_quality_threshold: 0.98
+    reference_cosine_min: 0.75
+
+  output_dir: "experiments/results"
+  save_embeddings: true
+  save_rotation_matrix: true
+  compute_statistics: true
+
+logging_level: "INFO"
+seed: 42
+device: "cuda"
+mixed_precision: true

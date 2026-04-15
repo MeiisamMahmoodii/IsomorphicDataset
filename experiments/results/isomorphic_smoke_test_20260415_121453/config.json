@@ -1,0 +1,50 @@
+{
+  "name": "isomorphic_smoke_test",
+  "description": "Minimal smoke run for High-Fidelity Pipeline",
+  "models": [
+    {
+      "name": "Qwen2.5-0.5B",
+      "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "device_map": "auto",
+      "torch_dtype": "float16",
+      "max_length": 64,
+      "batch_size": 4
+    }
+  ],
+  "datasets": [
+    {
+      "name": "toxigen_tiny",
+      "dataset_type": "toxigen",
+      "source": "huggingface",
+      "subset": null,
+      "max_samples": 2,
+      "use_banned_word_extraction": true
+    }
+  ],
+  "reference_model": {
+    "name": "Qwen2.5-0.5B",
+    "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "device_map": "auto",
+    "torch_dtype": "float16",
+    "max_length": 128,
+    "batch_size": 4
+  },
+  "extraction": {
+    "method": "mean_pooling",
+    "normalize": true,
+    "batch_size": 4
+  },
+  "alignment": {
+    "method": "procrustes_svd",
+    "num_anchors": 5,
+    "anchor_type": "words",
+    "normalize_embeddings": true,
+    "wasserstein_threshold": 0.98,
+    "alignment_quality_threshold": 0.98,
+    "reference_cosine_min": 0.75
+  },
+  "output_dir": "experiments/results",
+  "save_embeddings": true,
+  "save_rotation_matrix": true,
+  "compute_statistics": true
+}
