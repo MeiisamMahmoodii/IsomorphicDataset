@@ -6,8 +6,8 @@ All datasets follow the standard format of (seed, forbidden_words, semantic_inte
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple, Any
 import pandas as pd
 from pathlib import Path
 
@@ -21,7 +21,7 @@ class LengthConstraint:
 
 @dataclass
 class DatasetEntry:
-    """Standard dataset entry format - enhanced for Set-ConCA."""
+    """Standard dataset entry: seed, constraints, per-model rewrites, and QC flags."""
     seed_id: str
     seed_text: str
     semantic_intent: str
@@ -29,7 +29,11 @@ class DatasetEntry:
     forbidden_words: List[str]  # Banned words that MUST NOT be used in variations
     length_constraints: List[LengthConstraint]  # e.g., [5-10, 15-20]
     variations: Dict[str, str]  # Keyed by model_id + constraint_desc
-    metadata: Dict[str, any]
+    metadata: Dict[str, Any]
+    rewrite_specs: Dict[str, str] = field(default_factory=dict)  # length bin -> full prompt (Phase A)
+    rewrite_logs: Dict[str, Any] = field(default_factory=dict)  # per-variation attempt logs
+    accepted: bool = True
+    drop_reason: Optional[str] = None
 
 
 class BaseDataset(ABC):
@@ -142,6 +146,7 @@ class ToxiGenDataset(BaseDataset):
                 self._data.append(entry)
             
             print(f"[DONE] Loaded {len(self._data)} samples from ToxiGen")
+            return True
         except ImportError:
             raise ImportError("Please install: pip install datasets")
     
@@ -226,9 +231,11 @@ class HateXplainDataset(BaseDataset):
                 dataset = dataset.select(range(min(self.max_samples, len(dataset))))
             
             for idx, item in enumerate(dataset):
+                tokens = item.get("post_tokens", [])
+                seed_str = " ".join(tokens) if isinstance(tokens, list) else str(tokens)
                 entry = DatasetEntry(
                     seed_id=f"hatexplain_{idx}",
-                    seed_text=item.get("post_tokens", []),
+                    seed_text=seed_str,
                     semantic_intent="hate_speech_detection",
                     original_category=["normal", "offensive", "hate"][item.get("label", 0)],
                     forbidden_words=[],
@@ -239,6 +246,7 @@ class HateXplainDataset(BaseDataset):
                 self._data.append(entry)
             
             print(f"[DONE] Loaded {len(self._data)} samples from HateXplain")
+            return True
         except ImportError:
             raise ImportError("Please install: pip install datasets")
     

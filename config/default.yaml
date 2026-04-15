@@ -42,6 +42,8 @@ experiment:
     anchor_type: "words"
     normalize_embeddings: true
     wasserstein_threshold: 0.5
+    alignment_quality_threshold: 0.98
+    reference_cosine_min: 0.75
   
   # Output Configuration
   output_dir: "experiments/results"

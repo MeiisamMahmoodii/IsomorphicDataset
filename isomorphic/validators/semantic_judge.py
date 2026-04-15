@@ -11,6 +11,8 @@ import torch.nn.functional as F
 import numpy as np
 from typing import Dict
 
+from isomorphic.utils.device_utils import get_model_input_device
+
 
 class SemanticJudge:
     """
@@ -27,13 +29,17 @@ class SemanticJudge:
         """
         self.model = model
         self.tokenizer = tokenizer
-        self.device = model.device
+        self.device = get_model_input_device(model)
     
     def get_detailed_representation(self, text):
         """
         Extracts high-fidelity mean-pooled vector for a sentence.
         """
         inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
+        if "input_ids" in inputs:
+            inputs["input_ids"] = inputs["input_ids"].long()
+        if "attention_mask" in inputs:
+            inputs["attention_mask"] = inputs["attention_mask"].long()
         
         with torch.no_grad():
             outputs = self.model(**inputs, output_hidden_states=True)
@@ -67,7 +73,8 @@ class SemanticJudge:
             z_candidate.unsqueeze(0)
         ).item()
         metrics['reference_cosine_similarity'] = cos_sim
-        
+        metrics['cosine_similarity'] = cos_sim
+
         # 2. Wasserstein Distance
         # In a single-model latent space, Wasserstein measures the structural 
         # semantic shift between two concepts.
@@ -87,13 +94,15 @@ class SemanticJudge:
         """
         Determine if a sentence pair passes the isomorphism filter.
         """
-        passed_cosine = metrics['cosine_similarity'] >= cosine_threshold
-        passed_distance = metrics['euclidean_distance'] <= distance_threshold
-        
+        passed_cosine = metrics.get('cosine_similarity', metrics.get('reference_cosine_similarity', 0.0)) >= cosine_threshold
+        passed_distance = True
+        if 'euclidean_distance' in metrics:
+            passed_distance = metrics['euclidean_distance'] <= distance_threshold
+
         passed_wasserstein = True
         if 'wasserstein_distance' in metrics:
             passed_wasserstein = metrics['wasserstein_distance'] <= distance_threshold
-        
+
         overall_passed = passed_cosine and passed_distance and passed_wasserstein
         
         verdict = {
@@ -112,6 +121,6 @@ class SemanticJudge:
             if not passed_wasserstein and 'wasserstein_distance' in metrics:
                 verdict['reason'].append(f"Wasserstein distance {metrics['wasserstein_distance']:.4f} > {distance_threshold}")
         else:
-            verdict['reason'] = ["✅ PROVEN SEMANTIC ISOMORPHISM"]
+            verdict['reason'] = ["PASSED_SEMANTIC_ISOMORPHISM"]
         
         return verdict

@@ -6,29 +6,46 @@ Methods: Mean Pooling, Last Token, Hybrid, Attention-Weighted.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Any
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
+from isomorphic.utils.device_utils import get_model_input_device, normalize_device_map
 
 
 class BaseExtractor(ABC):
     """Abstract base class for vector extractors."""
-    
-    def __init__(self, model_name: str, device: str = "cuda", max_length: int = 128):
+
+    def __init__(
+        self,
+        model_name: str,
+        device: str = "cuda",
+        max_length: int = 128,
+        load_in_4bit: bool = False,
+        model: Any = None,
+        tokenizer: Any = None,
+        device_map: Optional[Any] = None,
+    ):
         self.model_name = model_name
         self.device = device
+        self.device_map = device_map
         self.max_length = max_length
-        self.tokenizer = None
-        self.model = None
-        self._load_model()
+        self.tokenizer = tokenizer
+        self.model = model
+        if self.model is None:
+            self._load_model(load_in_4bit)
+        else:
+            self.model.eval()
+            self.input_device = get_model_input_device(self.model)
+            print(f"[DONE] Using injected encoder model (input_device={self.input_device})")
     
     def _load_model(self, load_in_4bit: bool = False) -> None:
         """Load model and tokenizer with optional 4-bit quantization for large models."""
         from transformers import BitsAndBytesConfig
         
-        print(f"Loading {self.model_name} on {self.device}...")
+        dm = self.device_map if self.device_map is not None else self.device
+        print(f"Loading {self.model_name} (device_map={dm})...")
         
         bnb_config = None
         if load_in_4bit:
@@ -43,20 +60,46 @@ class BaseExtractor(ABC):
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         except AttributeError:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, extra_special_tokens={})
+
+        device_map = normalize_device_map(dm)
         self.model = AutoModel.from_pretrained(
             self.model_name,
             trust_remote_code=True,
             quantization_config=bnb_config,
-            device_map=self.device,  # Force single GPU placement
+            device_map=device_map,
             torch_dtype=torch.float16
         )
         
-        # If not using auto device map, move to specific device
-        if not load_in_4bit and "cuda" in self.device:
-            self.model = self.model.to(self.device)
-            
         self.model.eval()
-        print(f"[DONE] Model loaded on {self.device} (4-bit: {load_in_4bit})")
+        self.input_device = get_model_input_device(self.model)
+        print(f"[DONE] Model loaded (4-bit: {load_in_4bit}, input_device={self.input_device})")
+
+    @staticmethod
+    def _get_last_hidden(outputs) -> torch.Tensor:
+        """
+        Support both encoder models (AutoModel -> last_hidden_state)
+        and causal LMs (AutoModelForCausalLM -> hidden_states[-1] when enabled).
+        """
+        if hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
+            return outputs.last_hidden_state
+        if hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
+            return outputs.hidden_states[-1]
+        raise AttributeError("Model outputs have neither last_hidden_state nor hidden_states")
+
+    def _prepare_inputs(self, texts):
+        enc = self.tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            max_length=self.max_length,
+        ).to(self.input_device)
+        # Defensive: ensure embedding indices are integer tensors
+        if "input_ids" in enc:
+            enc["input_ids"] = enc["input_ids"].long()
+        if "attention_mask" in enc:
+            enc["attention_mask"] = enc["attention_mask"].long()
+        return enc
     
     def extract_all_methods(self, text: str) -> Dict[str, torch.Tensor]:
         """
@@ -68,19 +111,14 @@ class BaseExtractor(ABC):
         Returns:
             Dictionary mapping method names to vectors
         """
-        inputs = self.tokenizer(
-            [text],
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-            max_length=self.max_length
-        ).to(self.device)
+        inputs = self._prepare_inputs([text])
         
         with torch.no_grad():
-            outputs = self.model(**inputs, output_attentions=True)
+            # hidden states are required for CausalLM injected models
+            outputs = self.model(**inputs, output_attentions=True, output_hidden_states=True)
             
         results = {}
-        last_hidden = outputs.last_hidden_state
+        last_hidden = self._get_last_hidden(outputs)
         attention_mask = inputs['attention_mask']
         
         # 1. Mean Pooling
@@ -113,16 +151,10 @@ class BaseExtractor(ABC):
     
     def _extract_batch_internal(self, texts: List[str]) -> torch.Tensor:
         """Internal method for batch extraction (to be overridden)."""
-        inputs = self.tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-            max_length=self.max_length
-        ).to(self.device)
+        inputs = self._prepare_inputs(texts)
         
         with torch.no_grad():
-            outputs = self.model(**inputs)
+            outputs = self.model(**inputs, output_hidden_states=True)
         
         return self._extract_vectors(outputs, inputs)
     
@@ -143,7 +175,7 @@ class MeanPoolingExtractor(BaseExtractor):
     def _extract_vectors(self, outputs, inputs) -> torch.Tensor:
         """Mean pooling over all tokens with attention mask."""
         attention_mask = inputs['attention_mask']
-        last_hidden = outputs.last_hidden_state
+        last_hidden = self._get_last_hidden(outputs)
         
         # Apply attention mask
         mask = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
@@ -159,7 +191,7 @@ class LastTokenExtractor(BaseExtractor):
     
     def _extract_vectors(self, outputs, inputs) -> torch.Tensor:
         """Get last token embedding."""
-        last_hidden = outputs.last_hidden_state
+        last_hidden = self._get_last_hidden(outputs)
         last_tokens = last_hidden[:, -1, :]
         return last_tokens.cpu()
 
@@ -170,7 +202,7 @@ class HybridExtractor(BaseExtractor):
     def _extract_vectors(self, outputs, inputs) -> torch.Tensor:
         """Concatenate mean pooling and last token."""
         attention_mask = inputs['attention_mask']
-        last_hidden = outputs.last_hidden_state
+        last_hidden = self._get_last_hidden(outputs)
         
         # Mean pooling
         mask = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
@@ -203,21 +235,45 @@ class AttentionWeightedExtractor(BaseExtractor):
 
 class ExtractorFactory:
     """Factory for creating extractors."""
-    
+
     EXTRACTORS = {
         "mean_pooling": MeanPoolingExtractor,
         "last_token": LastTokenExtractor,
         "hybrid": HybridExtractor,
         "attention_weighted": AttentionWeightedExtractor,
     }
-    
+
     @classmethod
     def create(cls, method: str, model_name: str, **kwargs) -> BaseExtractor:
         """Create extractor instance."""
         if method not in cls.EXTRACTORS:
             raise ValueError(f"Unknown extraction method: {method}")
-        
+
         return cls.EXTRACTORS[method](model_name, **kwargs)
+
+    @classmethod
+    def create_shared_encoder(
+        cls,
+        model_name: str,
+        device: str,
+        load_in_4bit: bool,
+        model: Any,
+        tokenizer: Any,
+        max_length: int = 128,
+    ) -> MeanPoolingExtractor:
+        """
+        Encoder-only wrapper with `extract_all_methods`; uses an already-loaded
+        `AutoModel` + tokenizer (same weights as the rewriter causal LM).
+        """
+        return MeanPoolingExtractor(
+            model_name,
+            device=device,
+            max_length=max_length,
+            load_in_4bit=load_in_4bit,
+            model=model,
+            tokenizer=tokenizer,
+            device_map=None,
+        )
     
     @classmethod
     def list_methods(cls) -> List[str]:

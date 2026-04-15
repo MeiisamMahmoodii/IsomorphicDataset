@@ -1,0 +1,40 @@
+# Multiconcept constraint baseline (renamed from set_conca_multiconcept)
+experiment:
+  name: multiconcept_constraint_baseline
+  description: |
+    Multi-benchmark constraint experiment: filtered subsets from broad LLM benchmarks
+    (toxicity, sentiment, bias, truthfulness, etc.). Banned word and rewrite prompt
+    generation via Gemma-4-31B reference; rewriting via listed Huihui/Llama models.
+
+  datasets:
+    - name: jigsaw_toxicity
+      dataset_type: jigsaw
+      source: local
+      max_samples: 2000
+    - name: toxigen
+      dataset_type: toxigen
+      source: huggingface
+      max_samples: 2000
+
+  models: []
+
+  banned_word_model:
+    name: gemma-4-31B-it
+    model_id: huihui-ai/Huihui-gemma-4-31B-it-abliterated
+    batch_size: 4
+
+  extraction:
+    method: mean_pooling
+    normalize: true
+
+  alignment:
+    method: procrustes_svd
+    num_anchors: 77
+    wasserstein_threshold: 0.5
+    alignment_quality_threshold: 0.98
+    reference_cosine_min: 0.75
+
+logging_level: INFO
+seed: 42
+device: cuda
+mixed_precision: true

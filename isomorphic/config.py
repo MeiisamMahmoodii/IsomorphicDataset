@@ -42,6 +42,8 @@ class AlignmentConfig:
     anchor_type: str = "words"
     normalize_embeddings: bool = True
     wasserstein_threshold: float = 0.5
+    alignment_quality_threshold: float = 0.98
+    reference_cosine_min: float = 0.75
 
 
 @dataclass
@@ -59,6 +61,11 @@ class ExperimentConfig:
     description: str = ""
     models: List[ModelConfig] = field(default_factory=list)
     datasets: List[DatasetConfig] = field(default_factory=list)
+    # Optional reference model used for:
+    # - constraint generation (Phase A)
+    # - semantic reference gate (Phase 5)
+    # If omitted, the pipeline falls back to an internal default.
+    reference_model: Optional[ModelConfig] = None
     extraction: ExtractionConfig = field(default_factory=ExtractionConfig)
     alignment: AlignmentConfig = field(default_factory=AlignmentConfig)
     output_dir: Path = field(default_factory=lambda: Path("experiments/results"))
@@ -119,14 +126,26 @@ class ConfigManager:
         
         models = [ModelConfig(**m) for m in exp_data.get("models", [])]
         datasets = [DatasetConfig(**d) for d in exp_data.get("datasets", [])]
+        ref_data = exp_data.get("reference_model", None) or exp_data.get("banned_word_model", None)
+        reference_model = ModelConfig(**ref_data) if isinstance(ref_data, dict) else None
         extraction = ExtractionConfig(**exp_data.get("extraction", {}))
-        alignment = AlignmentConfig(**exp_data.get("alignment", {}))
+        align_data = exp_data.get("alignment", {})
+        alignment = AlignmentConfig(
+            method=align_data.get("method", "procrustes_svd"),
+            num_anchors=align_data.get("num_anchors", 77),
+            anchor_type=align_data.get("anchor_type", "words"),
+            normalize_embeddings=align_data.get("normalize_embeddings", True),
+            wasserstein_threshold=align_data.get("wasserstein_threshold", 0.5),
+            alignment_quality_threshold=align_data.get("alignment_quality_threshold", 0.98),
+            reference_cosine_min=align_data.get("reference_cosine_min", 0.75),
+        )
         
         experiment = ExperimentConfig(
             name=exp_data.get("name", "default"),
             description=exp_data.get("description", ""),
             models=models,
             datasets=datasets,
+            reference_model=reference_model,
             extraction=extraction,
             alignment=alignment,
         )

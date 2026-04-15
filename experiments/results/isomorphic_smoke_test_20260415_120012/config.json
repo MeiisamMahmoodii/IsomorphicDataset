@@ -1,0 +1,5 @@
+{
+  "name": "isomorphic_smoke_test",
+  "description": "Minimal smoke run for High-Fidelity Pipeline",
+  "models": [
+    

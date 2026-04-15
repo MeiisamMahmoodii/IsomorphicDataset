@@ -1,9 +1,15 @@
 experiment:
   name: "isomorphic_smoke_test"
   description: "Minimal smoke run for High-Fidelity Pipeline"
+  reference_model:
+    name: "Qwen2.5-0.5B"
+    model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+    device_map: "auto"
+    batch_size: 4
   models:
     - name: "Qwen2.5-0.5B"
       model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+      device_map: "auto"
       batch_size: 4
       max_length: 64
   datasets:
@@ -20,6 +26,8 @@ experiment:
     num_anchors: 5
     anchor_type: "words"
     wasserstein_threshold: 0.98
+    alignment_quality_threshold: 0.98
+    reference_cosine_min: 0.75
 
 device: "cuda"
 seed: 42
