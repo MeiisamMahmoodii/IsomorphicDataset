@@ -58,42 +58,38 @@ class IsomorphicPipeline:
         self._log("=" * 70)
         self._log("HIGH-FIDELITY ISOMORPHIC DATASET GENERATION")
         self._log("=" * 70)
-        
+
         try:
             # Step 1: Set-ConCA Constraint Generation
             self._log("\nSTEP 1: GENERATING SEMANTIC CONSTRAINTS (Set-ConCA)")
             datasets = self._load_and_constrain_datasets()
-            
-            # Step 2: Multi-Model Paraphrase Generation
-            self._log("\nSTEP 2: MULTI-MODEL PARAPHRASE REWRITING")
-            self._generate_isomorphic_variations(datasets)
-            
-            # Step 3: Multi-Method Latent Extraction
-            self._log("\nSTEP 3: TRIPLE-METHOD LATENT EXTRACTION")
-            vector_data = self._extract_all_latent_methods(datasets)
-            
+
+            # Steps 2+3 combined: for each model → load once → rewrite + extract → unload
+            self._log("\nSTEPS 2+3: PER-MODEL REWRITING + LATENT EXTRACTION (ONE MODEL AT A TIME)")
+            vector_data = self._process_all_models(datasets)
+
             # Step 4: Iterative Alignment & Dataset Pruning
             self._log("\nSTEP 4: ITERATIVE ALIGNMENT & DATASET PRUNING")
             alignment_results = self._align_and_filter(vector_data)
-            
+
             # Step 5: Reference Model Validation
             self._log("\nSTEP 5: REFERENCE MODEL VALIDATION (WASSERSTEIN)")
             self._validate_with_reference(datasets)
-            
+
             # Step 6: Generate Research Report
             self._log("\nSTEP 6: GENERATING COMPREHENSIVE REPORT")
             self.reporter.generate_final_report(self.metrics, datasets)
-            
+
             self._log("\n" + "=" * 70)
             self._log("PIPELINE COMPLETE [DONE]")
             self._log("=" * 70)
-            
+
             return {
                 "status": "success",
                 "experiment_dir": str(self.experiment_dir),
                 "metrics": self.metrics,
             }
-        
+
         except Exception as e:
             self._log(f"ERROR: {str(e)}")
             raise
@@ -137,91 +133,102 @@ class IsomorphicPipeline:
         
         return datasets
 
-    def _generate_isomorphic_variations(self, datasets: Dict[str, Any]) -> None:
-        """Use the 14-model fleet sequentially to generate paraphrases."""
-        for model_config in self.experiment_config.models:
-            self._log(f"Generating variations with: {model_config.model_id}")
-            
-            # 1. Load Model (Sequential Hot-Swap)
+    def _process_all_models(self, datasets: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Core hot-swap loop: for every model in the fleet, load it ONCE, then:
+          1. Rewrite all dataset entries (generate isomorphic variations)
+          2. Extract latent vectors (mean / last-token / attention-weighted)
+          3. Unload and free VRAM before moving to the next model
+        """
+        all_vector_data: Dict[str, Any] = {}
+        n_models = len(self.experiment_config.models)
+
+        for i, model_config in enumerate(self.experiment_config.models, 1):
+            self._log("-" * 60)
+            self._log(f"[{i}/{n_models}] Loading model: {model_config.model_id}")
+
             device = self.gpu_manager.get_optimal_device(model_config.model_id)
-            # Use 4-bit for models > 10B
-            load_in_4bit = "31B" in model_config.model_id or "35B" in model_config.model_id or "26B" in model_config.model_id
-            
+            load_in_4bit = any(
+                tag in model_config.model_id for tag in ("31B", "35B", "26B", "20b")
+            )
+
+            # ── Load rewriter ────────────────────────────────────────────────
             try:
                 rewriter = ModelRewriter(
-                    model_config.model_id, 
-                    device=device, 
-                    load_in_4bit=load_in_4bit
+                    model_config.model_id,
+                    device=device,
+                    load_in_4bit=load_in_4bit,
                 )
-                
-                # 2. Process All Datasets
-                for ds_name, ds in datasets.items():
-                    for entry in tqdm(ds._data, desc=f"Rewriting ({model_config.name})"):
-                        rewriter.process_entry(entry)
-                
-                # 3. Unload Immediately
-                del rewriter
-                self._cleanup_gpu()
-                self._log(f"  [DONE] model: {model_config.name}")
-                
             except Exception as e:
-                self._log(f"  [ERROR] Failed to process {model_config.name}: {str(e)}")
+                self._log(f"  [ERROR] Could not load {model_config.name}: {e}")
                 self._cleanup_gpu()
+                continue
 
-        self._log("  [DONE] Variation generation complete.")
+            # ── Phase A: Rewrite all datasets ────────────────────────────────
+            self._log(f"  Phase A — Rewriting datasets with {model_config.name}")
+            for ds_name, ds in datasets.items():
+                self._log(f"    Dataset: {ds_name} ({len(ds._data)} entries)")
+                for entry in tqdm(ds._data, desc=f"Rewrite [{model_config.name}|{ds_name}]"):
+                    try:
+                        rewriter.process_entry(entry)
+                    except Exception as e:
+                        self._log(f"    [WARN] Entry failed: {e}")
+            self._log(f"  Phase A — Rewriting done.")
 
-    def _extract_all_latent_methods(self, datasets: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract vectors using Mean, Last, and Attention-Weighted methods."""
-        all_vector_data = {}
-        for model_config in self.experiment_config.models:
-            self._log(f"Extracting triple-method vectors for: {model_config.model_id}")
-            
-            # 1. Load Model (Sequential Hot-Swap)
-            device = self.gpu_manager.get_optimal_device(model_config.model_id)
-            load_in_4bit = "31B" in model_config.model_id or "35B" in model_config.model_id or "26B" in model_config.model_id
-            
+            # ── Phase B: Extract latent vectors ──────────────────────────────
+            self._log(f"  Phase B — Extracting vectors with {model_config.name}")
+            model_vecs: Dict[str, Any] = {}
             try:
                 extractor = ExtractorFactory.create(
                     model_id=model_config.model_id,
                     device=device,
-                    load_in_4bit=load_in_4bit
+                    load_in_4bit=load_in_4bit,
+                    # Reuse the already-loaded model weights to avoid reloading
+                    model=rewriter.model,
+                    tokenizer=rewriter.tokenizer,
                 )
-                
-                # 2. Extract from All Datasets
-                model_vecs = {}
+
                 for ds_name, ds in datasets.items():
-                    # Extract Mean, Last, and Attention-Weighted in one pass
-                    # Actual implementation would batch process ds._data
-                    self._log(f"  Processing {ds_name}...")
-                    
-                    method_vecs = {
+                    self._log(f"    Extracting: {ds_name}")
+                    method_vecs: Dict[str, List] = {
                         "mean_pooling": [],
                         "last_token": [],
-                        "attention_weighted": []
+                        "attention_weighted": [],
                     }
-                    
-                    for entry in ds._data:
-                        # Extract from seed text
-                        vecs = extractor.extract_all_methods(entry.seed_text)
-                        for k, v in vecs.items():
-                            method_vecs[k].append(v)
-                            
-                    # Convert to tensors
-                    for k in method_vecs:
-                        method_vecs[k] = torch.stack(method_vecs[k])
-                        
+                    for entry in tqdm(ds._data, desc=f"Extract [{model_config.name}|{ds_name}]"):
+                        try:
+                            vecs = extractor.extract_all_methods(entry.seed_text)
+                            for k, v in vecs.items():
+                                method_vecs[k].append(v)
+                        except Exception as e:
+                            self._log(f"    [WARN] Extraction skipped for entry: {e}")
+
+                    # Only stack if we collected any vectors
+                    for k in list(method_vecs.keys()):
+                        if method_vecs[k]:
+                            method_vecs[k] = torch.stack(method_vecs[k])
+                        else:
+                            method_vecs.pop(k)
+
                     model_vecs[ds_name] = method_vecs
-                
+
                 all_vector_data[model_config.name] = model_vecs
-                
-                # 3. Unload
-                del extractor
-                self._cleanup_gpu()
-                
+                self._log(f"  Phase B — Extraction done.")
+
             except Exception as e:
-                self._log(f"  [ERROR] Extraction failed for {model_config.name}: {str(e)}")
-                self._cleanup_gpu()
-                
+                self._log(f"  [ERROR] Extraction failed for {model_config.name}: {e}")
+
+            # ── Unload everything before next model ───────────────────────────
+            try:
+                del extractor
+            except NameError:
+                pass
+            del rewriter
+            self._cleanup_gpu()
+            self._log(f"  [DONE] {model_config.name} fully processed and unloaded.")
+
+        self._log("-" * 60)
+        self._log(f"All {n_models} models processed.")
         return all_vector_data
 
     def _align_and_filter(self, vector_data: Dict[str, Any]) -> Dict[str, Any]:

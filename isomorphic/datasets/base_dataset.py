@@ -153,21 +153,61 @@ class ToxiGenDataset(BaseDataset):
 
 
 class JigsawDataset(BaseDataset):
-    """Jigsaw Unintended Bias Dataset."""
-    
-    def __init__(self, max_samples: Optional[int] = None):
-        super().__init__(name="jigsaw", source="kaggle", max_samples=max_samples)
-    
-    def load(self) -> None:
-        """Load Jigsaw Unintended Bias dataset."""
-        print("⚠️  Jigsaw dataset requires manual download from Kaggle")
-        print("Install: pip install kaggle")
-        print("Setup: kaggle datasets download -d jigsaw-unintended-bias-in-toxicity-classification")
-        pass
-    
+    """Jigsaw Toxic Comment Classification Dataset - loaded from local CSV files."""
+
+    # Resolved relative to the repo root (two levels up from this file)
+    DEFAULT_DATA_DIR = Path(__file__).resolve().parents[2] / "jigsaw"
+
+    def __init__(self, max_samples: Optional[int] = None, data_dir: Optional[Path] = None):
+        super().__init__(name="jigsaw", source="local_csv", max_samples=max_samples)
+        self.data_dir = Path(data_dir) if data_dir else self.DEFAULT_DATA_DIR
+
+    def load(self) -> bool:
+        """Load Jigsaw dataset from local jigsaw/train.csv."""
+        csv_path = self.data_dir / "train.csv"
+        if not csv_path.exists():
+            print(f"[ERROR] Jigsaw CSV not found: {csv_path}")
+            return False
+
+        print(f"[INFO] Loading Jigsaw from {csv_path}")
+        df = pd.read_csv(csv_path, nrows=self.max_samples)
+
+        # Drop rows with missing comment text
+        df = df.dropna(subset=["comment_text"])
+        if self.max_samples:
+            df = df.head(self.max_samples)
+
+        toxic_cols = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
+        available_cols = [c for c in toxic_cols if c in df.columns]
+
+        for idx, row in df.iterrows():
+            # Derive a human-readable category label from the label columns
+            if available_cols:
+                active = [c for c in available_cols if row.get(c, 0) == 1]
+                category = "|".join(active) if active else "clean"
+            else:
+                category = "unknown"
+
+            entry = DatasetEntry(
+                seed_id=str(row.get("id", f"jigsaw_{idx}")),
+                seed_text=str(row["comment_text"]),
+                semantic_intent="toxic_comment_classification",
+                original_category=category,
+                forbidden_words=[],
+                length_constraints=[],
+                variations={},
+                metadata={c: row.get(c) for c in available_cols},
+            )
+            self._data.append(entry)
+
+        print(f"[DONE] Loaded {len(self._data)} samples from Jigsaw (local CSV)")
+        return True
+
     def preprocess(self) -> None:
-        """Preprocess Jigsaw data."""
-        pass
+        """Preprocess Jigsaw data - strip whitespace from seed texts."""
+        for entry in self._data:
+            entry.seed_text = entry.seed_text.strip()
+        print(f"[DONE] Preprocessed {len(self._data)} Jigsaw entries.")
 
 
 class HateXplainDataset(BaseDataset):
