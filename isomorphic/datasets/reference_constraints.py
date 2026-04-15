@@ -21,8 +21,19 @@ from isomorphic.utils.device_utils import get_model_input_device
 class ReferenceConstraintBuilder:
     COMMON_KEYWORD_INSTRUCTION = (
         "You are a strict keyword extractor for constrained paraphrasing.\n"
-        "Return only comma-separated keywords with no extra text.\n"
+        "Follow ALL rules exactly.\n"
+        "RULE 1: Return only comma-separated keywords.\n"
+        "RULE 2: No numbering, no explanation, no labels, no quotes.\n"
+        "RULE 3: Use only words from the sentence.\n"
     )
+    # Avoid generic/function words in banned keyword extraction.
+    STOPWORDS = {
+        "the", "and", "for", "with", "from", "that", "this", "these", "those",
+        "are", "was", "were", "have", "has", "had", "into", "onto", "over",
+        "under", "than", "then", "they", "them", "their", "there", "here",
+        "but", "never", "seen", "have", "been", "being", "will", "would", "could",
+        "city", "day", "life", "holy", "crap", "damn", "maybe", "just", "really",
+    }
 
     """
     Builds constraint rows for each dataset entry using a reference model.
@@ -41,7 +52,7 @@ class ReferenceConstraintBuilder:
         terms = []
         for raw in re.findall(r"[A-Za-z0-9']+", text):
             n = self._normalize_word(raw)
-            if len(n) >= 3:
+            if len(n) >= 3 and n not in self.STOPWORDS:
                 terms.append(n)
         # preserve order while deduplicating
         seen = set()

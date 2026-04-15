@@ -1,13 +1,14 @@
 # PyTorch Stack (Pinned to CUDA 11.8 for compatibility with NVIDIA Driver 12020)
 --extra-index-url https://download.pytorch.org/whl/cu118
-torch==2.3.1+cu118
-torchvision==0.18.1+cu118
-torchaudio==2.3.1+cu118
+torch==2.4.1+cu118
+torchvision==0.19.1+cu118
+torchaudio==2.4.1+cu118
 
-# Hugging Face Suite 
-transformers==4.46.3
-tokenizers==0.20.3
-accelerate==0.34.2
+# Hugging Face Suite
+# Use a recent stack to support newer architectures (gemma4, qwen3_5, gpt_oss).
+transformers>=4.57.0
+tokenizers>=0.21.0
+accelerate>=1.0.0
 
 # Quantization
 bitsandbytes>=0.43.0

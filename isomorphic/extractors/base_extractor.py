@@ -57,9 +57,16 @@ class BaseExtractor(ABC):
             )
             
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        except AttributeError:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, extra_special_tokens={})
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True,
+            )
+        except Exception:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True,
+                use_fast=False,
+            )
 
         device_map = normalize_device_map(dm)
         self.model = AutoModel.from_pretrained(
@@ -67,7 +74,8 @@ class BaseExtractor(ABC):
             trust_remote_code=True,
             quantization_config=bnb_config,
             device_map=device_map,
-            torch_dtype=torch.float16
+            torch_dtype=torch.float16,
+            attn_implementation="eager",
         )
         
         self.model.eval()

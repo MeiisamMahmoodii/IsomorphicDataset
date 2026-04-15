@@ -34,7 +34,8 @@ def main() -> int:
     model_ids = [
         "huihui-ai/Llama-3.2-1B-Instruct-abliterated",
         "huihui-ai/Llama-3.2-3B-Instruct-abliterated",
-        "huihui-ai/Llama-3.2-11B-Vision-Instruct-abliterated",
+        # Use a stable text-only fallback for preview in this environment.
+        "Qwen/Qwen2.5-0.5B-Instruct",
     ]
 
     gpu = GPUManager()
@@ -76,12 +77,19 @@ def main() -> int:
             if entry.length_constraints:
                 entry.length_constraints = entry.length_constraints[:1]
                 entry.length_constraints[0].max_words = args.max_words
-            rw.process_entry(entry)
+            try:
+                rw.process_entry(entry)
+            except Exception as e:
+                print(f"[WARN] Entry failed for model {mid} seed={entry.seed_id}: {e}")
+                continue
             # Print all variations written for this model
             print(f"\nSEED: {entry.seed_text}")
             for k, v in entry.variations.items():
                 if k.startswith(mid):
-                    print(f"- {k}: {v}")
+                    if not (isinstance(v, str) and v.strip()):
+                        print(f"- {k}: [NO VALID REWRITE — all attempts failed constraints]")
+                    else:
+                        print(f"- {k}: {v}")
 
         del rw
 

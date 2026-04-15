@@ -5,6 +5,7 @@ Uses diverse LLMs (Llama-3.2, Gemma-4, Qwen-3.5) to rewrite sentences
 under strict length and banned-word constraints.
 """
 
+import re
 import torch
 from typing import List, Dict, Any, Optional
 
@@ -39,10 +40,13 @@ class ModelRewriter:
     ]
     # Constant instruction prepended to every rewrite request.
     COMMON_REWRITE_INSTRUCTION = (
-        "You are a strict paraphrasing system.\n"
-        "Return exactly ONE rewritten sentence only.\n"
-        "Do not add explanations, notes, labels, or lists.\n"
-        "Keep the same semantic meaning as the source sentence.\n"
+        "You are a strict paraphrasing engine.\n"
+        "Follow ALL rules exactly.\n"
+        "RULE 1: Output exactly one sentence only.\n"
+        "RULE 2: Keep the same meaning as the source sentence.\n"
+        "RULE 3: Do NOT include explanation, note, justification, disclaimer, labels, bullets, or quotes.\n"
+        "RULE 4: Do NOT repeat the prompt text.\n"
+        "RULE 5: Output plain sentence text only.\n"
     )
     # Globally banned generic filler words, always applied in addition
     # to per-sentence key-word bans.
@@ -55,6 +59,71 @@ class ModelRewriter:
         "just",
         "maybe",
     ]
+    OUTPUT_CLEAN_PREFIXES = (
+        "note:",
+        "explanation:",
+        "justification:",
+        "rewritten:",
+        "rewritten sentence:",
+        "original:",
+        "response:",
+    )
+    OUTPUT_META_PATTERNS = (
+        "this is one way i can rewrite",
+        "while adhering to",
+        "according to your",
+        "i can rewrite that sentence",
+        "i rewrote the sentence",
+        "the rewritten sentence is",
+        "here is the rewritten sentence",
+        "i can rephrase",
+        "human:",
+        "assistant:",
+        "system:",
+        "user:",
+        "word version",
+        "recipe for",
+        "i need a recipe",
+        "rephrased sentence",
+        "this rephrased sentence",
+        "uses fewer than",
+        "maintaining the original meaning",
+        "</rewrite>",
+        "<rewrite",
+        "one sentence here",
+        "now produce only",
+        "human resources",
+        "job satisfaction",
+        "employee retention",
+        "analyze the request",
+        "role: strict paraphrasing engine",
+        "</think>",
+        "<think>",
+    )
+
+    @staticmethod
+    def _ensure_set_submodule_compat() -> None:
+        """
+        Compatibility shim for environments where model classes don't expose
+        `set_submodule`, but newer transformers loaders expect it.
+        """
+        try:
+            from transformers.modeling_utils import PreTrainedModel  # type: ignore
+        except Exception:
+            return
+
+        if hasattr(PreTrainedModel, "set_submodule"):
+            return
+
+        def _set_submodule(self, target: str, module):  # type: ignore
+            parts = target.split(".")
+            parent = self
+            for p in parts[:-1]:
+                parent = getattr(parent, p)
+            setattr(parent, parts[-1], module)
+            return self
+
+        setattr(PreTrainedModel, "set_submodule", _set_submodule)
 
     def __init__(
         self,
@@ -82,6 +151,7 @@ class ModelRewriter:
 
     def _load_local_model(self, load_in_4bit: bool):
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        self._ensure_set_submodule_compat()
 
         bnb_config = None
         if load_in_4bit:
@@ -92,11 +162,18 @@ class ModelRewriter:
                 bnb_4bit_use_double_quant=True,
             )
 
+        # Some models expose custom tokenizer/model classes via remote code.
+        # Fall back to slow tokenizer for backends not available in the current env.
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-        except AttributeError:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_id, extra_special_tokens={}
+                self.model_id,
+                trust_remote_code=True,
+            )
+        except Exception:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_id,
+                trust_remote_code=True,
+                use_fast=False,
             )
 
         # If an explicit device_map was provided, it takes precedence.
@@ -110,6 +187,7 @@ class ModelRewriter:
             quantization_config=bnb_config,
             device_map=device_map,
             torch_dtype=torch.float16,
+            attn_implementation="eager",
         )
         self.model.eval()
         self.input_device = get_model_input_device(self.model)
@@ -133,7 +211,7 @@ class ModelRewriter:
             f"and {constraint.max_words} words.\n"
             f"DO NOT use any of these words: {banned_str}.\n"
             f"Sentence: {text}\n"
-            f"Rewritten:"
+            "Rewritten sentence:"
         )
 
     def rewrite_with_prompt(self, prompt: str, constraint: LengthConstraint) -> str:
@@ -145,19 +223,100 @@ class ModelRewriter:
             inputs["attention_mask"] = inputs["attention_mask"].long()
         max_tokens = int(constraint.max_words * 1.5) + 10
 
+        eos_id = getattr(self.tokenizer, "eos_token_id", None)
+        pad_id = getattr(self.tokenizer, "pad_token_id", None)
+        if pad_id is None:
+            pad_id = eos_id
+
         with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-            )
+            try:
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9,
+                    pad_token_id=pad_id,
+                    eos_token_id=eos_id,
+                )
+            except RuntimeError as e:
+                # Some checkpoints produce NaN/Inf probabilities in sampling mode.
+                # Fall back to deterministic decoding to avoid hard crash.
+                if "probability tensor contains either `inf`, `nan` or element < 0" not in str(e):
+                    raise
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=False,
+                    pad_token_id=pad_id,
+                    eos_token_id=eos_id,
+                )
 
         variation = self.tokenizer.decode(
             outputs[0][inputs.input_ids.shape[-1] :], skip_special_tokens=True
         )
-        return variation.strip()
+        return self._sanitize_output(variation.strip(), constraint)
+
+    @classmethod
+    def _sanitize_output(cls, text: str, constraint: LengthConstraint) -> str:
+        """
+        Remove assistant-style meta text and keep one concise sentence.
+        """
+        if not text:
+            return ""
+
+        # Strip accidental XML / placeholder echoes from the model.
+        text = re.sub(r"</?rewrite[^>]*>", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bone sentence here\b", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"</?think[^>]*>", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"\*\*[^*]+\*\*", " ", text)
+
+        # Drop lines that look like explanations/labels.
+        cleaned_lines = []
+        for ln in text.splitlines():
+            s = ln.strip()
+            if not s:
+                continue
+            low = s.lower()
+            if any(low.startswith(p) for p in cls.OUTPUT_CLEAN_PREFIXES):
+                continue
+            if any(p in low for p in cls.OUTPUT_META_PATTERNS):
+                continue
+            cleaned_lines.append(s)
+        if not cleaned_lines:
+            return ""
+
+        merged = " ".join(cleaned_lines)
+        # Candidate sentence chunks; prefer one within target length.
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", merged) if p.strip()]
+        candidates = []
+        for p in parts or [merged.strip()]:
+            p = re.sub(r"^(Rewritten|Output|Answer)\s*:\s*", "", p, flags=re.IGNORECASE).strip()
+            low = p.lower()
+            if any(meta in low for meta in cls.OUTPUT_META_PATTERNS):
+                continue
+            if any(low.startswith(pref) for pref in cls.OUTPUT_CLEAN_PREFIXES):
+                continue
+            candidates.append(p)
+
+        if not candidates:
+            return ""
+
+        # Choose first candidate in range, else shortest candidate.
+        chosen = None
+        for c in candidates:
+            n = len(c.split())
+            if constraint.min_words <= n <= constraint.max_words:
+                chosen = c
+                break
+        if chosen is None:
+            chosen = min(candidates, key=lambda c: len(c.split()))
+
+        # Hard cap to max words for validation friendliness.
+        words = chosen.split()
+        if len(words) > constraint.max_words:
+            chosen = " ".join(words[: constraint.max_words]).strip()
+        return chosen
 
     def rewrite(self, text: str, banned_words: List[str], constraint: LengthConstraint) -> str:
         """Rewrite using the standard template (backward compatible)."""
@@ -212,8 +371,14 @@ class ModelRewriter:
                     break
 
             if variation is None:
-                variation = log["attempts"][-1]["output_preview"] if log["attempts"] else ""
+                # Do not store a failed last attempt as a "valid" rewrite (it misleads logs/exports).
+                variation = ""
                 log["success"] = False
+                log["failure_reason"] = (
+                    log["attempts"][-1].get("reason", "no_pass")
+                    if log["attempts"]
+                    else "no_attempts"
+                )
 
             entry.variations[key] = variation
             entry.rewrite_logs[f"{self.model_id}::{key}"] = log

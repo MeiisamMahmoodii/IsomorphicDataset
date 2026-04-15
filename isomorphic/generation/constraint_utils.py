@@ -11,6 +11,62 @@ import re
 from typing import List, Tuple
 
 WRITER_MAX_ATTEMPTS = 5
+META_OUTPUT_PATTERNS = (
+    "this sentence",
+    "the sentence",
+    "original sentence",
+    "rewritten sentence",
+    "core message",
+    "provided words",
+    "i cannot rewrite",
+    "i'm sorry",
+    "as requested",
+    "according to",
+    "human:",
+    "assistant:",
+    "system:",
+    "user:",
+    "word version",
+    "recipe for",
+    "i need a recipe",
+    "rephrased sentence",
+    "this rephrased sentence",
+    "uses fewer than",
+    "maintaining the original meaning",
+    "analyze the request",
+    "role: strict paraphrasing engine",
+    "</think>",
+    "<think>",
+)
+
+# Junk / instruction-echo outputs that must never pass validation.
+GARBAGE_SUBSTRINGS = (
+    "</rewrite>",
+    "<rewrite",
+    "one sentence here",
+    "now produce only",
+    "human resources",
+    "job satisfaction",
+    "employee retention",
+    "let's rewrite",
+    "i'll rewrite",
+    "analyze the request",
+    "role: strict paraphrasing engine",
+    "</think>",
+    "<think>",
+    "**analyze",
+)
+
+
+def _looks_like_garbage_output(text: str) -> bool:
+    """Heuristic: XML echoes, numeric spam, unrelated boilerplate."""
+    lower = text.lower()
+    if any(s in lower for s in GARBAGE_SUBSTRINGS):
+        return True
+    # Decimal spam like "0.1 0.2 0.3 ..."
+    if re.search(r"\b0\.\d+\s+0\.\d+\s+0\.\d+", lower):
+        return True
+    return False
 
 
 def word_count(text: str) -> int:
@@ -45,6 +101,11 @@ def rewrite_passes_constraints(
     n = word_count(s)
     if n < min_words or n > max_words:
         return False, f"length_{n}_not_in_[{min_words},{max_words}]"
+    lower = s.lower()
+    if any(p in lower for p in META_OUTPUT_PATTERNS):
+        return False, "meta_output_present"
+    if _looks_like_garbage_output(s):
+        return False, "garbage_output"
     if violates_banned_words(s, banned_words):
         return False, "banned_word_present"
     return True, "ok"
