@@ -251,40 +251,67 @@ class JigsawDataset(BaseDataset):
         print(f"[DONE] Preprocessed {len(self._data)} Jigsaw entries.")
 
 
+def _hatexplain_majority_label(item: Dict[str, Any]) -> int:
+    """Resolve 0/1/2 class from HateXplain row (script or parquet mirror schemas)."""
+    if "label" in item and item["label"] is not None:
+        return int(item["label"])
+    ann = item.get("annotators") or {}
+    lbs = ann.get("label")
+    if isinstance(lbs, list) and lbs:
+        return int(max(set(lbs), key=lbs.count))
+    if isinstance(lbs, (int, float)):
+        return int(lbs)
+    return 0
+
+
 class HateXplainDataset(BaseDataset):
     """HateXplain Dataset - Hate Speech Detection with Explanations."""
-    
+
+    # Official `hatexplain` uses a Hub loading script; recent `datasets` rejects scripts.
+    # Parquet mirror (same underlying corpus, compatible fields).
+    _HF_PARQUET_REPO = "literAlbDev/hatexplain"
+
     def __init__(self, max_samples: Optional[int] = None):
         super().__init__(name="hatexplain", source="huggingface", max_samples=max_samples)
-    
-    def load(self) -> None:
-        """Load HateXplain from HuggingFace."""
+
+    def load(self) -> bool:
+        """Load HateXplain from HuggingFace (parquet mirror)."""
         try:
             from datasets import load_dataset
-            dataset = load_dataset("hatexplain", split="train")
-            
-            if self.max_samples:
-                dataset = dataset.select(range(min(self.max_samples, len(dataset))))
-            
-            for idx, item in enumerate(dataset):
-                tokens = item.get("post_tokens", [])
-                seed_str = " ".join(tokens) if isinstance(tokens, list) else str(tokens)
-                entry = DatasetEntry(
-                    seed_id=f"hatexplain_{idx}",
-                    seed_text=seed_str,
-                    semantic_intent="hate_speech_detection",
-                    original_category=["normal", "offensive", "hate"][item.get("label", 0)],
-                    forbidden_words=[],
-                    length_constraints=[],
-                    variations={},
-                    metadata=item
-                )
-                self._data.append(entry)
-            
-            print(f"[DONE] Loaded {len(self._data)} samples from HateXplain")
-            return True
         except ImportError:
-            raise ImportError("Please install: pip install datasets")
+            print("[ERROR] Please install: pip install datasets")
+            return False
+
+        try:
+            dataset = load_dataset(self._HF_PARQUET_REPO, split="train")
+        except Exception as e:
+            print(f"[ERROR] Failed to load HateXplain from {self._HF_PARQUET_REPO}: {e}")
+            return False
+
+        if self.max_samples:
+            dataset = dataset.select(range(min(self.max_samples, len(dataset))))
+
+        cats = ["normal", "offensive", "hate"]
+        for idx, item in enumerate(dataset):
+            row = dict(item)
+            tokens = row.get("post_tokens", [])
+            seed_str = " ".join(tokens) if isinstance(tokens, list) else str(tokens)
+            li = _hatexplain_majority_label(row)
+            li = max(0, min(li, len(cats) - 1))
+            entry = DatasetEntry(
+                seed_id=str(row.get("id", f"hatexplain_{idx}")),
+                seed_text=seed_str,
+                semantic_intent="hate_speech_detection",
+                original_category=cats[li],
+                forbidden_words=[],
+                length_constraints=[],
+                variations={},
+                metadata=row,
+            )
+            self._data.append(entry)
+
+        print(f"[DONE] Loaded {len(self._data)} samples from HateXplain ({self._HF_PARQUET_REPO})")
+        return True
     
     def preprocess(self) -> None:
         """Preprocess HateXplain data."""
